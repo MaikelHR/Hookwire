@@ -13,3 +13,5 @@ dist/
 # editor/os
 .DS_Store
 *.local
+
+.vercel
