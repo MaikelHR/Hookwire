@@ -25,7 +25,7 @@ export function FirstVisitModal({ onDismiss }: { onDismiss: () => void }) {
           </Button>
           <a
             className="inline-flex items-center justify-center gap-2 rounded-ctl border border-line-strong bg-card text-text hover:bg-hov font-mono text-xs font-medium px-3.5 py-2 no-underline"
-            href="https://github.com/"
+            href="https://github.com/MaikelHR/Hookwire"
             target="_blank"
             rel="noopener"
           >
