@@ -1,0 +1,15 @@
+# dependencies / build
+node_modules/
+dist/
+
+# environment — nunca commitear connection strings
+.env
+.env.*
+!.env.example
+
+# vercel
+.vercel/
+
+# editor/os
+.DS_Store
+*.local
