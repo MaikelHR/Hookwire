@@ -15,7 +15,8 @@ export default async function handler(_req: VercelRequest, res: VercelResponse):
     const sql = neon(url);
     await sql`SELECT 1`;
     res.status(200).json({ ok: true, db: true });
-  } catch {
+  } catch (err) {
+    console.error('health check db error:', err);
     res.status(500).json({ ok: false, db: false });
   }
 }
