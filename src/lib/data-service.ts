@@ -1,5 +1,5 @@
 /* ============================================================
-   Hookwire — data service (mock, Fase 0)
+   Hookwire data service (mock, Fase 0)
    Port directo de design_handoff_hookwire_dashboard/js/data-service.js.
 
    - Todo el estado + lógica de simulación vive aquí.

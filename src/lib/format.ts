@@ -1,4 +1,4 @@
-/* Hookwire — formateadores de tiempo y latencia */
+/* Formateadores de tiempo y latencia */
 
 export function timeAgo(ts: number | null | undefined): string {
   if (!ts) return '—';

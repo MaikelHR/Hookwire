@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import type { JsonObject } from '../../lib/data-service';
 
 /* Syntax highlight del payload: keys accent, strings amber, números azules,
-   booleans/null rojos, puntuación faint (colores en index.css → .hw-code). */
+   booleans/null rojos, puntuación faint (los colores están en index.css, clase .hw-code). */
 export function JsonCode({ obj }: { obj: JsonObject }) {
   const json = JSON.stringify(obj, null, 2);
   const nodes: ReactNode[] = [];

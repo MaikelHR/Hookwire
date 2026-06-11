@@ -16,7 +16,7 @@ export function Th({ children }: { children: ReactNode }) {
   );
 }
 
-/* Las filas deben llevar className="group …" para que la última pierda el borde */
+/* Las filas deben llevar className="group ..." para que la última pierda el borde */
 export function Tr({ className = '', ...rest }: HTMLAttributes<HTMLTableRowElement>) {
   return <tr className={`group ${className}`} {...rest} />;
 }

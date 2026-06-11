@@ -1,4 +1,4 @@
--- 001_init.sql — esquema inicial de Hookwire
+-- 001_init.sql: esquema inicial de Hookwire
 --
 -- Modelo: events (lo que publica el cliente) -> deliveries (un intento de
 -- entrega por endpoint suscrito, es la unidad de trabajo de la cola) ->
@@ -60,7 +60,7 @@ CREATE INDEX idx_deliveries_session_created ON deliveries (session_id, created_a
 CREATE INDEX idx_deliveries_endpoint ON deliveries (endpoint_id);
 
 -- Historial de intentos HTTP de cada delivery (timeline del drawer).
--- response_status es NULL cuando no hubo respuesta (timeout / error de red → error).
+-- response_status es NULL cuando no hubo respuesta (timeout o error de red; el detalle queda en error).
 CREATE TABLE delivery_attempts (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   delivery_id           UUID NOT NULL REFERENCES deliveries (id) ON DELETE CASCADE,

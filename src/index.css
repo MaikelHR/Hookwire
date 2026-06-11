@@ -1,7 +1,7 @@
 @import 'tailwindcss';
 
 /* ============================================================
-   Hookwire — design tokens (handoff: dirección "graphite")
+   Hookwire: design tokens (dirección "graphite" del handoff)
    Dark es el default; light se activa con [data-mode="light"]
    en <html>. El accent y los colores de estado (ok/warn/err)
    son fijos y no cambian con el modo.
@@ -36,7 +36,7 @@
   --shadow: 0 6px 18px rgba(20, 30, 24, 0.08);
 }
 
-/* Tokens expuestos a Tailwind como utilidades (bg-card, text-dim, border-line…).
+/* Tokens expuestos a Tailwind como utilidades (bg-card, text-dim, border-line, etc).
    "inline" para que las utilidades referencien la var y el theme switch
    dark/light funcione en runtime sin recompilar. */
 @theme inline {
@@ -94,8 +94,8 @@
       background-position: -200% 0;
     }
   }
-  /* Nunca anima desde opacity:0 — el estado base debe ser visible
-     (regla del handoff: export/screenshot safety). */
+  /* Nunca anima desde opacity:0, el estado base debe quedar visible
+     (regla del handoff para exports y screenshots). */
   @keyframes hw-row-in {
     from {
       transform: translateY(-5px);

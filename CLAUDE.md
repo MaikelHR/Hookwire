@@ -4,14 +4,14 @@ Servicio de entrega de webhooks construido como proyecto de portafolio. Las apps
 eventos vía `POST /api/events` y Hookwire garantiza la entrega a los endpoints suscritos
 con reintentos, backoff exponencial, firma HMAC y dead-letter queue. Es una demo pública
 autocontenida: un reclutador entra, manda un evento de prueba, ve la entrega en vivo,
-simula un fallo y observa los reintentos — todo en menos de un minuto, sin configurar nada.
+simula un fallo y observa los reintentos, todo en menos de un minuto y sin configurar nada.
 
-## Arquitectura (decisiones firmes, costo $0 — no re-discutir)
+## Arquitectura (decisiones firmes, costo $0, no re-discutir)
 
 - **Frontend:** React + TypeScript estricto + Tailwind (Vite). El diseño de referencia
   high-fidelity vive en `design_handoff_hookwire_dashboard/` (leer su README primero).
   Configuración aprobada: dirección visual **graphite**, accent **#b07ce8**, density
-  **comfy** (row padding 12px). Las variantes `phosphor`/`carbon` del CSS se ignoran;
+  **comfy** (row padding 12px). Las variantes `phosphor`/`carbon` del CSS se ignoran y
   `tweaks-panel.jsx` NO se porta.
 - **Capa de datos del frontend:** TODA la data pasa por `src/lib/data-service.ts` y sus
   hooks tipados (`useStats`, `useEndpoints`, `useDeliveries`, `useEcho`, `useFailureMode`,
@@ -32,8 +32,8 @@ simula un fallo y observa los reintentos — todo en menos de un minuto, sin con
   `(session_id, id)` en `events`.
 - **Demo multi-visitante:** sesión anónima por cookie, datos aislados por `session_id`,
   expiración a 24h, rate limit por IP en `/api/events`.
-- **Driver de DB:** `@neondatabase/serverless` — queries por HTTP sin estado, ideal para
-  funciones serverless (no se agota un pool TCP con cada cold start).
+- **Driver de DB:** `@neondatabase/serverless`. Hace queries por HTTP sin estado, ideal
+  para funciones serverless (no se agota un pool TCP con cada cold start).
 - **Secretos:** `DATABASE_URL` solo se lee en `/api` y en el script de migraciones.
   Nunca llega al cliente (Vite solo expone variables con prefijo `VITE_`).
 
@@ -42,46 +42,46 @@ simula un fallo y observa los reintentos — todo en menos de un minuto, sin con
 Migraciones SQL versionadas en `/migrations`, aplicadas con `npm run db:migrate`
 (el runner registra lo aplicado en `schema_migrations`).
 
-- **endpoints** — destinos suscritos de una sesión.
+- **endpoints**: destinos suscritos de una sesión.
   `id UUID PK`, `session_id TEXT NOT NULL`, `name`, `url`, `secret` (firma HMAC),
   `disabled BOOL`, `simulate_failure BOOL` (toggle de la demo), `created_at`.
   Índice por `session_id`.
-- **events** — eventos publicados por el cliente.
+- **events**: eventos publicados por el cliente.
   `id TEXT` (lo genera el CLIENTE: clave de idempotencia), `session_id TEXT NOT NULL`,
   `event_type`, `payload JSONB`, `created_at`. **PK compuesta `(session_id, id)`**
-  (= el UNIQUE requerido; compuesta porque ids de clientes distintos pueden colisionar
-  entre sesiones sin ser conflicto real).
-- **deliveries** — la unidad de trabajo de la cola: una fila por (evento × endpoint).
-  `id UUID PK`, `session_id`, `event_id` + FK compuesta `(session_id, event_id)` →
+  (equivale al UNIQUE requerido; es compuesta porque ids de clientes distintos pueden
+  colisionar entre sesiones sin ser conflicto real).
+- **deliveries**: la unidad de trabajo de la cola, una fila por (evento x endpoint).
+  `id UUID PK`, `session_id`, `event_id` + FK compuesta `(session_id, event_id)` hacia
   events, `endpoint_id FK`, `status` CHECK
   (`pending|delivered|retrying|failed|dead_lettered`), `attempt_count`,
   `next_attempt_at`, `created_at`, `updated_at`.
   Índice parcial `(next_attempt_at) WHERE status IN ('pending','retrying')` para el
   drain de la cola; índices por sesión y por endpoint.
-- **delivery_attempts** — historial de cada intento HTTP (timeline del drawer).
+- **delivery_attempts**: historial de cada intento HTTP (timeline del drawer).
   `id UUID PK`, `delivery_id FK`, `attempt_number`, `response_status` (NULL si no hubo
   respuesta), `response_body_snippet`, `duration_ms`, `error`, `created_at`.
   `UNIQUE (delivery_id, attempt_number)`.
 
 ## Fases del proyecto
 
-- **Fase 0 — Scaffold + UI + fundaciones** ✅ completada
+- **Fase 0: Scaffold + UI + fundaciones (COMPLETADA)**
   Vite + React + TS estricto + Tailwind + ESLint; UI pixel-perfect recreada del handoff
   con data-service mock; `/api/health` con `SELECT 1` contra Neon; migración inicial
   (4 tablas); CLAUDE.md; deploy a Vercel (hookwire.vercel.app).
-- **Fase 1 — API real de lectura/escritura**
+- **Fase 1: API real de lectura/escritura**
   Sesión anónima por cookie; CRUD de endpoints; `POST /api/events` con idempotencia y
   rate limit por IP; creación de deliveries; drain inline en la misma request (firma
   HMAC, intento HTTP, registro de attempts).
-- **Fase 2 — Cola y reintentos**
+- **Fase 2: Cola y reintentos**
   `POST /api/tick` (polling del dashboard cada 3-5 s) que toma deliveries vencidas con
   `FOR UPDATE SKIP LOCKED`, ejecuta intentos, aplica backoff y dead-letter a los 6
   intentos; replay manual.
-- **Fase 3 — Conectar el frontend a la API real**
+- **Fase 3: Conectar el frontend a la API real**
   Sustituir el mock de `src/lib/data-service.ts` por fetch a `/api/*` manteniendo los
   hooks idénticos (cero cambios en componentes); echo receiver real; expiración de
   sesión a 24h.
-- **Fase 4 — Pulido y portfolio**
+- **Fase 4: Pulido y portfolio**
   Rate limiting fino, cleanup job de sesiones, README público con diagrama de
   arquitectura, link real de GitHub en el modal de bienvenida, métricas P95 reales.
 
@@ -97,7 +97,7 @@ Migraciones SQL versionadas en `/migrations`, aplicadas con `npm run db:migrate`
 
 ## Comandos
 
-- `npm run dev` — dev server de Vite (solo UI; las functions corren con `vercel dev`)
-- `npm run build` — typecheck (`tsc --noEmit`) + build de producción
-- `npm run lint` — ESLint
-- `npm run db:migrate` — aplica las migraciones pendientes (lee `DATABASE_URL` de `.env`)
+- `npm run dev`: dev server de Vite (solo UI; las functions corren con `vercel dev`)
+- `npm run build`: typecheck (`tsc --noEmit`) + build de producción
+- `npm run lint`: ESLint
+- `npm run db:migrate`: aplica las migraciones pendientes (lee `DATABASE_URL` de `.env`)
