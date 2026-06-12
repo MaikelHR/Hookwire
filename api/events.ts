@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createPool } from './_lib/db.js';
 import { getSessionId } from './_lib/session.js';
 import { ensureDemoEndpoint, getBaseUrl } from './_lib/seed.js';
+import { publishEvent } from '../src/lib/server/publish.js';
 import { drainPendingDeliveries, type DrainResult } from '../src/lib/server/drain.js';
 
 /* El id lo genera el CLIENTE y es la clave de idempotencia: si la red corta
@@ -35,41 +36,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   try {
     await ensureDemoEndpoint(pool, sessionId, getBaseUrl(req));
 
-    /* Evento + deliveries en una sola transacción: o se publica completo
-       (con su trabajo encolado) o no se publica nada. */
-    const client = await pool.connect();
-    let deliveriesCreated = 0;
-    let duplicate = false;
-    try {
-      await client.query('BEGIN');
-      const inserted = await client.query(
-        `INSERT INTO events (id, session_id, event_type, payload)
-         VALUES ($1, $2, $3, $4::jsonb)
-         ON CONFLICT (session_id, id) DO NOTHING
-         RETURNING id`,
-        [id, sessionId, event_type, JSON.stringify(payload)],
-      );
-      if (inserted.rows.length === 0) {
-        duplicate = true;
-      } else {
-        const deliveries = await client.query(
-          `INSERT INTO deliveries (session_id, event_id, endpoint_id)
-           SELECT $1, $2, id FROM endpoints
-           WHERE session_id = $1 AND disabled = FALSE
-           RETURNING id`,
-          [sessionId, id],
-        );
-        deliveriesCreated = deliveries.rows.length;
-      }
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    /* La transacción de publicación vive en src/lib/server/publish.ts
+       (compartida con el test de idempotencia concurrente). */
+    const published = await publishEvent(pool, sessionId, { id, eventType: event_type, payload });
 
-    if (duplicate) {
+    if (published.duplicate) {
       const existing = await pool.query(
         `SELECT id, event_type, created_at FROM events WHERE session_id = $1 AND id = $2`,
         [sessionId, id],
@@ -93,7 +64,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       ok: true,
       duplicate: false,
       eventId: id,
-      deliveriesCreated,
+      deliveriesCreated: published.deliveriesCreated,
       drain,
       ...(drainError !== null ? { drainError } : {}),
     });
