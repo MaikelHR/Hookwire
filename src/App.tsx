@@ -4,6 +4,7 @@ import { Sidebar, type ViewId } from './components/Sidebar';
 import { LiveDemoPanel } from './components/LiveDemoPanel';
 import { DeliveryDrawer } from './components/DeliveryDrawer';
 import { FirstVisitModal } from './components/FirstVisitModal';
+import { Toasts } from './components/ui/Toasts';
 import { OverviewView } from './views/OverviewView';
 import { EndpointsView } from './views/EndpointsView';
 import { EndpointDetailView } from './views/EndpointDetailView';
@@ -78,6 +79,7 @@ export default function App() {
 
       {deliveryId !== null ? <DeliveryDrawer deliveryId={deliveryId} onClose={() => setDeliveryId(null)} /> : null}
       {showIntro ? <FirstVisitModal onDismiss={dismissIntro} /> : null}
+      <Toasts />
     </div>
   );
 }

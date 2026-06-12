@@ -17,7 +17,7 @@ export function FirstVisitModal({ onDismiss }: { onDismiss: () => void }) {
           watch the retry backoff in action.
         </p>
         <div className="font-mono text-[10.5px] text-faint border border-dashed border-line-strong rounded-ctl px-2.5 py-2 mt-3.5 mb-[18px]">
-          Portfolio project — your demo data is isolated per session and expires.
+          Portfolio project. Your demo data is isolated per browser session and expires after 24 hours.
         </div>
         <div className="flex gap-2.5">
           <Button variant="primary" onClick={onDismiss}>

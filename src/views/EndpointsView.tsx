@@ -1,5 +1,4 @@
-import { useEndpoints } from '../lib/data-service';
-import { useFakeLoad } from '../lib/useFakeLoad';
+import { useEndpoints, useFirstLoad } from '../lib/data-service';
 import { timeAgo } from '../lib/format';
 import { EndpointPill } from '../components/ui/StatusPill';
 import { SkeletonRows } from '../components/ui/Skeleton';
@@ -7,7 +6,7 @@ import { Table, TableWrap, Td, Th, Tr } from '../components/ui/Table';
 
 export function EndpointsView({ onOpenEndpoint }: { onOpenEndpoint: (id: string) => void }) {
   const endpoints = useEndpoints();
-  const loading = useFakeLoad(550);
+  const loading = useFirstLoad();
 
   return (
     <div>

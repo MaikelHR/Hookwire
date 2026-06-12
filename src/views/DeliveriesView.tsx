@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useDeliveries, useEndpoints } from '../lib/data-service';
-import { useFakeLoad } from '../lib/useFakeLoad';
+import { useDeliveries, useEndpoints, useFirstLoad } from '../lib/data-service';
 import { fmtLatency, timeAgo } from '../lib/format';
 import { DeliveryPill } from '../components/ui/StatusPill';
 import { Countdown } from '../components/ui/Countdown';
@@ -10,7 +9,7 @@ import { Table, TableWrap, Td, Th, Tr } from '../components/ui/Table';
 export function DeliveriesView({ onOpenDelivery }: { onOpenDelivery: (id: string) => void }) {
   const deliveries = useDeliveries();
   const endpoints = useEndpoints();
-  const loading = useFakeLoad(550);
+  const loading = useFirstLoad();
   const epName = (id: string): string => endpoints.find((e) => e.id === id)?.name ?? id;
 
   // recuerda qué filas ya se vieron, para animar solo las nuevas

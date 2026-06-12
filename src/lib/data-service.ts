@@ -13,6 +13,7 @@
 import { useEffect } from 'react';
 import { QueryClient, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MAX_ATTEMPTS } from './retry-policy';
+import { pushToast } from './toasts';
 
 /* La política de reintentos vive en retry-policy.ts (módulo puro
    compartido con el drain del servidor); la UI la importa desde aquí
@@ -99,10 +100,42 @@ export const queryClient = new QueryClient({
 });
 
 // ---------- transporte ----------
+/* Error tipado del transporte: conserva el status y, si el servidor lo
+   mandó (el 429 del rate limit), el Retry-After en segundos, para que
+   las acciones puedan avisar al usuario en vez de solo loguear. */
+class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly retryAfterS: number | null,
+  ) {
+    super(message);
+  }
+}
+
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
-  if (!res.ok) throw new Error(`${init?.method ?? 'GET'} ${url} failed with ${res.status}`);
+  if (!res.ok) {
+    let retryAfterS: number | null = null;
+    try {
+      const body = (await res.json()) as { retryAfterS?: unknown };
+      if (typeof body.retryAfterS === 'number') retryAfterS = body.retryAfterS;
+    } catch {
+      /* body sin JSON: el error queda solo con el status */
+    }
+    throw new ApiError(`${init?.method ?? 'GET'} ${url} failed with ${res.status}`, res.status, retryAfterS);
+  }
   return (await res.json()) as T;
+}
+
+/* El rate limit es la única falla que el visitante debe ver explicada:
+   un toast con cuándo reintentar. El resto sigue yendo a la consola. */
+function reportActionError(action: string, err: unknown): void {
+  if (err instanceof ApiError && err.status === 429) {
+    pushToast(err.retryAfterS !== null ? `Rate limit reached. Try again in ${err.retryAfterS}s.` : 'Rate limit reached. Try again in a moment.');
+    return;
+  }
+  console.error(`${action} failed:`, err);
 }
 
 // Formas que devuelve /api/* (fechas ISO, status de la base de datos)
@@ -276,37 +309,56 @@ const EMPTY_ENDPOINTS: Endpoint[] = [];
 const EMPTY_DELIVERIES: Delivery[] = [];
 const EMPTY_ECHO: EchoEntry[] = [];
 
+/* Opciones compartidas entre el hook de datos y useFirstLoad: usar la
+   misma queryKey hace que ambos observen exactamente la misma query del
+   cache (TanStack dedupe: no hay fetch duplicado). */
+const statsOptions = {
+  queryKey: ['stats'],
+  queryFn: async (): Promise<Stats> => {
+    const body = await fetchJson<{ stats: Stats }>('/api/stats');
+    return body.stats;
+  },
+} as const;
+
+const endpointsOptions = {
+  queryKey: ['endpoints'],
+  queryFn: async (): Promise<Endpoint[]> => {
+    const body = await fetchJson<{ endpoints: ApiEndpoint[] }>('/api/endpoints');
+    return body.endpoints.map(mapEndpoint);
+  },
+} as const;
+
+const deliveriesOptions = {
+  queryKey: ['deliveries'],
+  queryFn: async (): Promise<Delivery[]> => {
+    const body = await fetchJson<{ deliveries: ApiDelivery[] }>('/api/deliveries');
+    return body.deliveries.map(mapDelivery);
+  },
+} as const;
+
 export function useStats(): Stats {
-  const { data } = useQuery({
-    queryKey: ['stats'],
-    queryFn: async () => {
-      const body = await fetchJson<{ stats: Stats }>('/api/stats');
-      return body.stats;
-    },
-  });
+  const { data } = useQuery(statsOptions);
   return data ?? EMPTY_STATS;
 }
 
 export function useEndpoints(): Endpoint[] {
-  const { data } = useQuery({
-    queryKey: ['endpoints'],
-    queryFn: async () => {
-      const body = await fetchJson<{ endpoints: ApiEndpoint[] }>('/api/endpoints');
-      return body.endpoints.map(mapEndpoint);
-    },
-  });
+  const { data } = useQuery(endpointsOptions);
   return data ?? EMPTY_ENDPOINTS;
 }
 
 export function useDeliveries(): Delivery[] {
-  const { data } = useQuery({
-    queryKey: ['deliveries'],
-    queryFn: async () => {
-      const body = await fetchJson<{ deliveries: ApiDelivery[] }>('/api/deliveries');
-      return body.deliveries.map(mapDelivery);
-    },
-  });
+  const { data } = useQuery(deliveriesOptions);
   return data ?? EMPTY_DELIVERIES;
+}
+
+/* Skeleton de primera carga REAL: true mientras alguna de las queries que
+   alimentan las vistas espera su primer resultado. Sustituye al useFakeLoad
+   del mock de la Fase 0 (un setTimeout que fingía cargar). */
+export function useFirstLoad(): boolean {
+  const stats = useQuery(statsOptions);
+  const endpoints = useQuery(endpointsOptions);
+  const deliveries = useQuery(deliveriesOptions);
+  return stats.isPending || endpoints.isPending || deliveries.isPending;
 }
 
 export function useEcho(): EchoEntry[] {
@@ -421,7 +473,7 @@ export function useDemoActions(): DemoActions {
         body: JSON.stringify({ id, event_type: type, payload: makeSamplePayload(type) }),
       })
         .then(refreshAll)
-        .catch((err: unknown) => console.error('sendTestEvent failed:', err));
+        .catch((err: unknown) => reportActionError('sendTestEvent', err));
       return id;
     },
     /* Persiste simulate_failure en el endpoint demo. Update optimista:
@@ -452,7 +504,7 @@ export function useDemoActions(): DemoActions {
         body: JSON.stringify({ deliveryId: id }),
       })
         .then(refreshAll)
-        .catch((err: unknown) => console.error('replayDelivery failed:', err));
+        .catch((err: unknown) => reportActionError('replayDelivery', err));
     },
   };
 }

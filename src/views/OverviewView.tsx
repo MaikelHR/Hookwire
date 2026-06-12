@@ -1,5 +1,4 @@
-import { useDeliveries, useEndpoints, useStats } from '../lib/data-service';
-import { useFakeLoad } from '../lib/useFakeLoad';
+import { useDeliveries, useEndpoints, useFirstLoad, useStats } from '../lib/data-service';
 import { timeAgo } from '../lib/format';
 import { StatCard } from '../components/ui/StatCard';
 import { AreaChart } from '../components/ui/AreaChart';
@@ -11,7 +10,7 @@ export function OverviewView({ onOpenDelivery }: { onOpenDelivery: (id: string) 
   const stats = useStats();
   const deliveries = useDeliveries();
   const endpoints = useEndpoints();
-  const loading = useFakeLoad(600);
+  const loading = useFirstLoad();
 
   const epName = (id: string): string => endpoints.find((e) => e.id === id)?.name ?? id;
   const recent = deliveries.slice(0, 8);
