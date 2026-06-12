@@ -22,12 +22,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       return;
     }
     try {
-      const rows = (await sql.query('SELECT session_id FROM deliveries WHERE id = $1', [deliveryId])) as Array<{
-        session_id: string;
-      }>;
+      const rows = (await sql.query(
+        `SELECT d.session_id, e.simulate_failure
+         FROM deliveries d
+         JOIN endpoints e ON e.id = d.endpoint_id
+         WHERE d.id = $1`,
+        [deliveryId],
+      )) as Array<{ session_id: string; simulate_failure: boolean }>;
       const delivery = rows[0];
       if (!delivery) {
         res.status(404).json({ ok: false, error: 'unknown delivery' });
+        return;
+      }
+      /* Modo fallo de la demo: el receiver se comporta como un endpoint
+         caído y responde 500 sin procesar nada. El drain recibe este 500
+         de verdad y programa el reintento con backoff; aquí no hay nada
+         simulado por la UI. No se registra echo_message: la consola solo
+         muestra webhooks aceptados, igual que un receptor real roto que
+         no procesó el mensaje. */
+      if (delivery.simulate_failure) {
+        res.status(500).json({ ok: false, error: 'simulated failure (demo toggle is on)' });
         return;
       }
       await sql.query(

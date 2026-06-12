@@ -1,7 +1,15 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { z } from 'zod';
 import { getSql } from './_lib/db.js';
 import { getSessionId } from './_lib/session.js';
 import { ensureDemoEndpoint, getBaseUrl } from './_lib/seed.js';
+
+/* El único campo editable desde la UI es el toggle de la demo. El WHERE
+   por session_id evita que una sesión toque endpoints de otra. */
+const patchSchema = z.object({
+  id: z.uuid(),
+  simulateFailure: z.boolean(),
+});
 
 interface EndpointRow {
   id: string;
@@ -17,12 +25,36 @@ interface EndpointRow {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
+  const sql = getSql();
+  const sessionId = getSessionId(req);
+
+  if (req.method === 'PATCH') {
+    const parsed = patchSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ ok: false, error: 'invalid body: id (uuid) and simulateFailure (boolean) are required' });
+      return;
+    }
+    try {
+      const rows = (await sql.query(
+        `UPDATE endpoints SET simulate_failure = $3 WHERE id = $1 AND session_id = $2 RETURNING id`,
+        [parsed.data.id, sessionId, parsed.data.simulateFailure],
+      )) as Array<{ id: string }>;
+      if (rows.length === 0) {
+        res.status(404).json({ ok: false, error: 'endpoint not found' });
+        return;
+      }
+      res.status(200).json({ ok: true, simulateFailure: parsed.data.simulateFailure });
+    } catch (err) {
+      console.error('endpoints PATCH error:', err);
+      res.status(500).json({ ok: false, error: 'internal error' });
+    }
+    return;
+  }
+
   if (req.method !== 'GET') {
     res.status(405).json({ ok: false, error: 'method not allowed' });
     return;
   }
-  const sql = getSql();
-  const sessionId = getSessionId(req);
   try {
     /* Sembrar aquí garantiza que el primer load del dashboard ya tenga el
        Demo receiver, antes incluso de publicar el primer evento. */
@@ -53,9 +85,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         id: r.id,
         name: r.name,
         url: r.url,
-        /* simulate_failure marca al endpoint como Failing en la UI; el toggle
-           que lo activa llega en la Fase 2. */
         status: r.disabled ? 'disabled' : r.simulate_failure ? 'failing' : 'healthy',
+        simulateFailure: r.simulate_failure,
         successRate: r.total_attempts > 0 ? (r.ok_attempts / r.total_attempts) * 100 : 100,
         lastDeliveryAt: r.last_ok_at,
         secret: r.secret,
