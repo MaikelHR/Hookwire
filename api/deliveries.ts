@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getSql } from './_lib/db';
-import { getSessionId } from './_lib/session';
+import { getSql } from './_lib/db.js';
+import { getSessionId } from './_lib/session.js';
 
 interface DeliveryRow {
   id: string;

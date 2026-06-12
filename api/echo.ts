@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getSql } from './_lib/db';
-import { getSessionId } from './_lib/session';
-import { headerValue } from './_lib/http';
+import { getSql } from './_lib/db.js';
+import { getSessionId } from './_lib/session.js';
+import { headerValue } from './_lib/http.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

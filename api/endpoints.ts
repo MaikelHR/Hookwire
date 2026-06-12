@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getSql } from './_lib/db';
-import { getSessionId } from './_lib/session';
-import { ensureDemoEndpoint, getBaseUrl } from './_lib/seed';
+import { getSql } from './_lib/db.js';
+import { getSessionId } from './_lib/session.js';
+import { ensureDemoEndpoint, getBaseUrl } from './_lib/seed.js';
 
 interface EndpointRow {
   id: string;

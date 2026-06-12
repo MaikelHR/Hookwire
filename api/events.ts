@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { z } from 'zod';
-import { createPool } from './_lib/db';
-import { getSessionId } from './_lib/session';
-import { ensureDemoEndpoint, getBaseUrl } from './_lib/seed';
-import { drainPendingDeliveries, type DrainResult } from '../src/lib/server/drain';
+import { createPool } from './_lib/db.js';
+import { getSessionId } from './_lib/session.js';
+import { ensureDemoEndpoint, getBaseUrl } from './_lib/seed.js';
+import { drainPendingDeliveries, type DrainResult } from '../src/lib/server/drain.js';
 
 /* El id lo genera el CLIENTE y es la clave de idempotencia: si la red corta
    la respuesta y el cliente reintenta el mismo POST, el ON CONFLICT de la PK

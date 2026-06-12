@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { VercelRequest } from '@vercel/node';
-import { headerValue } from './http';
+import { headerValue } from './http.js';
 
 /* Acepta tanto el cliente HTTP de neon() como Pool: solo necesitamos query
    con placeholders y no usamos el resultado. */
