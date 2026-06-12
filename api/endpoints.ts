@@ -5,9 +5,13 @@ import { getSessionId } from './_lib/session.js';
 import { ensureDemoEndpoint, getBaseUrl } from './_lib/seed.js';
 
 /* El único campo editable desde la UI es el toggle de la demo. El WHERE
-   por session_id evita que una sesión toque endpoints de otra. */
+   por session_id evita que una sesión toque endpoints de otra.
+   z.guid() y no z.uuid(): el id del endpoint demo sale de un SHA-256
+   truncado (seed.ts), tiene forma de UUID pero no cumple los nibbles de
+   versión/variante de RFC 4122 que z.uuid() exige; a Postgres le basta
+   el formato hex 8-4-4-4-12, que es justo lo que valida guid. */
 const patchSchema = z.object({
-  id: z.uuid(),
+  id: z.guid(),
   simulateFailure: z.boolean(),
 });
 
@@ -31,7 +35,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   if (req.method === 'PATCH') {
     const parsed = patchSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ ok: false, error: 'invalid body: id (uuid) and simulateFailure (boolean) are required' });
+      res.status(400).json({ ok: false, error: 'invalid body: id (guid) and simulateFailure (boolean) are required' });
       return;
     }
     try {
