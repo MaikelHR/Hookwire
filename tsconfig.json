@@ -18,5 +18,5 @@
     "noUncheckedSideEffectImports": true,
     "noUncheckedIndexedAccess": true
   },
-  "include": ["src", "api", "vite.config.ts"]
+  "include": ["src", "api", "vite.config.ts", "vitest.setup.ts"]
 }
