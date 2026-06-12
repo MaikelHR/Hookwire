@@ -11,7 +11,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     return;
   }
   const sql = getSql();
-  const sessionId = getSessionId(req);
+  const sessionId = getSessionId(req, res);
   try {
     const [publishedRows, statusRows, p95Rows, chartRows] = (await Promise.all([
       sql.query(`SELECT count(*)::int AS published FROM events WHERE session_id = $1`, [sessionId]),

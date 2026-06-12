@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createPool } from './_lib/db.js';
 import { getSessionId } from './_lib/session.js';
 import { ensureDemoEndpoint, getBaseUrl } from './_lib/seed.js';
+import { checkRateLimit, clientIp, sendRateLimited } from './_lib/rate-limit.js';
 import { publishEvent } from '../src/lib/server/publish.js';
 import { drainPendingDeliveries, type DrainResult } from '../src/lib/server/drain.js';
 
@@ -14,6 +15,11 @@ const eventSchema = z.object({
   event_type: z.string().trim().min(1).max(128),
   payload: z.looseObject({}),
 });
+
+/* Generoso para una demo (un visitante humano no publica 30 eventos en
+   5 min) pero suficiente para que un script no llene la base. */
+const EVENTS_LIMIT = 30;
+const EVENTS_WINDOW_S = 5 * 60;
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   if (req.method !== 'POST') {
@@ -30,10 +36,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     return;
   }
 
-  const sessionId = getSessionId(req);
+  const sessionId = getSessionId(req, res);
   const { id, event_type, payload } = parsed.data;
   const pool = createPool();
   try {
+    const verdict = await checkRateLimit(pool, `events:${clientIp(req)}`, EVENTS_LIMIT, EVENTS_WINDOW_S);
+    if (!verdict.allowed) {
+      sendRateLimited(res, verdict);
+      return;
+    }
+
     await ensureDemoEndpoint(pool, sessionId, getBaseUrl(req));
 
     /* La transacción de publicación vive en src/lib/server/publish.ts

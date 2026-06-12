@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createPool } from './_lib/db.js';
 import { getSessionId } from './_lib/session.js';
+import { cleanupExpired } from './_lib/cleanup.js';
 import { drainPendingDeliveries, type DrainResult } from '../src/lib/server/drain.js';
 
 /* El "reloj" de la cola. No hay worker 24/7 (decisión de arquitectura,
@@ -18,11 +19,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     res.status(405).json({ ok: false, error: 'method not allowed' });
     return;
   }
-  const sessionId = getSessionId(req);
+  const sessionId = getSessionId(req, res);
   const pool = createPool();
   try {
+    /* Expiración de sesiones a 24h: el tick es el único pulso periódico
+       del sistema, así que también hace de recolector (sin cron externo). */
+    const cleanup = await cleanupExpired(pool);
     const drain: DrainResult = await drainPendingDeliveries(pool, { sessionId });
-    res.status(200).json({ ok: true, drain });
+    res.status(200).json({ ok: true, drain, cleanup });
   } catch (err) {
     console.error('tick error:', err);
     res.status(500).json({ ok: false, error: 'internal error' });

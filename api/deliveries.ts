@@ -22,7 +22,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     return;
   }
   const sql = getSql();
-  const sessionId = getSessionId(req);
+  const sessionId = getSessionId(req, res);
   try {
     /* Última hora, igual que anuncia la UI ("attempts · last hour"). El
        json_agg arma el timeline de intentos en la misma query; la latencia

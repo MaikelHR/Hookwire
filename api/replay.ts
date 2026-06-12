@@ -2,9 +2,15 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { z } from 'zod';
 import { createPool } from './_lib/db.js';
 import { getSessionId } from './_lib/session.js';
+import { checkRateLimit, clientIp, sendRateLimited } from './_lib/rate-limit.js';
 import { drainPendingDeliveries, type DrainResult } from '../src/lib/server/drain.js';
 
 const replaySchema = z.object({ deliveryId: z.uuid() });
+
+/* Cada replay dispara un POST real al endpoint suscrito; mismo presupuesto
+   de escritura que los eventos pero con su propia cuenta. */
+const REPLAY_LIMIT = 60;
+const REPLAY_WINDOW_S = 5 * 60;
 
 /* Replay manual desde el drawer: revive una delivery que ya terminó
    (típicamente dead_lettered cuando el endpoint se recupera; también
@@ -26,9 +32,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     res.status(400).json({ ok: false, error: 'invalid body: deliveryId (uuid) is required' });
     return;
   }
-  const sessionId = getSessionId(req);
+  const sessionId = getSessionId(req, res);
   const pool = createPool();
   try {
+    const verdict = await checkRateLimit(pool, `replay:${clientIp(req)}`, REPLAY_LIMIT, REPLAY_WINDOW_S);
+    if (!verdict.allowed) {
+      sendRateLimited(res, verdict);
+      return;
+    }
+
     const requeued = await pool.query(
       `UPDATE deliveries
        SET status = 'pending', next_attempt_at = NULL, updated_at = now()

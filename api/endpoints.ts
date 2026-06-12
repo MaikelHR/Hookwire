@@ -30,7 +30,7 @@ interface EndpointRow {
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   const sql = getSql();
-  const sessionId = getSessionId(req);
+  const sessionId = getSessionId(req, res);
 
   if (req.method === 'PATCH') {
     const parsed = patchSchema.safeParse(req.body);

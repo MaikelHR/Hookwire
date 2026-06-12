@@ -84,7 +84,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
 
   if (req.method === 'GET') {
     try {
-      const sessionId = getSessionId(req);
+      const sessionId = getSessionId(req, res);
       const rows = (await sql.query(
         `SELECT id, event_type, attempt, status_code, verified, received_at
          FROM echo_messages
