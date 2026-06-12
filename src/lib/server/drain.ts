@@ -22,9 +22,9 @@
      receiver: interbloqueo. NO KEY UPDATE excluye a otros claimers
      pero convive con las validaciones de FK.
    ============================================================ */
-import { createHmac } from 'node:crypto';
 import type { Pool, PoolClient } from '@neondatabase/serverless';
 import { resolveAttemptOutcome, type AttemptOutcome } from '../retry-policy.js';
+import { signPayload } from './signature.js';
 
 const USER_AGENT = 'Hookwire/1.4 (+https://hookwire.dev)';
 const HTTP_TIMEOUT_MS = 5000;
@@ -54,15 +54,6 @@ export interface DrainResult {
   delivered: number;
   retrying: number;
   deadLettered: number;
-}
-
-/* Firma estilo Stripe: HMAC SHA-256 de "<timestamp>.<body>" con el secreto
-   del endpoint, enviada como "t=<unix>,v1=<hex64>". El receptor recalcula
-   el HMAC con su copia del secreto y compara; incluir el timestamp en lo
-   firmado evita que un tercero re-envíe (replay) una entrega vieja. */
-export function signPayload(secret: string, body: string, unixSeconds: number): string {
-  const mac = createHmac('sha256', secret).update(`${unixSeconds}.${body}`).digest('hex');
-  return `t=${unixSeconds},v1=${mac}`;
 }
 
 /* El claim toma trabajo "vencido": las 'pending' recién encoladas llevan
