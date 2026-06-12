@@ -6,14 +6,21 @@
    inline tras publicar, y POST /api/tick (Fase 2) la reusará tal
    cual para disparar reintentos vencidos.
 
-   Patrón de claim: SELECT ... FOR UPDATE SKIP LOCKED dentro de una
-   transacción. El lock de fila funciona como "lease" del trabajo:
+   Patrón de claim: SELECT ... FOR NO KEY UPDATE SKIP LOCKED dentro
+   de una transacción. El lock de fila funciona como "lease":
    - Otro worker que ejecute el mismo SELECT se salta las filas
      bloqueadas (SKIP LOCKED) en lugar de quedarse esperando, así
      dos drains concurrentes nunca procesan la misma delivery.
    - Si el proceso muere a mitad del intento, la transacción hace
      ROLLBACK y la fila vuelve a quedar visible para el siguiente
      drain: entrega "al menos una vez", la garantía de un webhook.
+   - Es NO KEY UPDATE y no FOR UPDATE por una razón concreta: las
+     FKs que apuntan a deliveries (echo_messages.delivery_id) toman
+     FOR KEY SHARE sobre la fila referenciada al insertar. FOR UPDATE
+     es incompatible con ese lock y deja al receiver bloqueado hasta
+     el COMMIT del drain, que a su vez espera la respuesta HTTP del
+     receiver: interbloqueo. NO KEY UPDATE excluye a otros claimers
+     pero convive con las validaciones de FK.
    ============================================================ */
 import { createHmac } from 'node:crypto';
 import type { Pool, PoolClient } from '@neondatabase/serverless';
@@ -58,7 +65,7 @@ export function signPayload(secret: string, body: string, unixSeconds: number): 
 
 /* Fase 1: el claim solo toma deliveries 'pending' (los retries con backoff
    llegan en la Fase 2). El JOIN trae todo lo necesario para el intento;
-   FOR UPDATE OF d bloquea únicamente la fila de deliveries. */
+   OF d bloquea únicamente la fila de deliveries. */
 const CLAIM_SQL = `
   SELECT d.id, d.session_id, d.attempt_count,
          e.url, e.secret,
@@ -69,7 +76,7 @@ const CLAIM_SQL = `
   WHERE d.status = 'pending'
     AND ($1::text IS NULL OR d.session_id = $1)
   ORDER BY d.created_at
-  FOR UPDATE OF d SKIP LOCKED
+  FOR NO KEY UPDATE OF d SKIP LOCKED
   LIMIT 1`;
 
 async function attemptDelivery(client: PoolClient, row: ClaimedRow): Promise<'delivered' | 'retrying'> {
