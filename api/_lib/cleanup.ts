@@ -2,9 +2,9 @@ import type { Pool } from '@neondatabase/serverless';
 
 /* Expiración de sesiones sin cron externo (costo $0): corre al inicio de
    cada POST /api/tick, que el dashboard ya dispara cada ~4 s. Borra por
-   created_at y deja que la cascada de FKs haga el resto:
-   events -> deliveries -> delivery_attempts / echo_messages, y
-   endpoints -> deliveries. La cookie de sesión caduca a las mismas 24h
+   created_at y deja que la cascada de FKs haga el resto: events arrastra
+   sus deliveries, estas arrastran delivery_attempts y echo_messages, y
+   endpoints arrastra las suyas. La cookie de sesión caduca a las mismas 24h
    (api/_lib/session.ts), así que nunca se borran datos de una cookie viva.
 
    Es un DELETE barato: con los índices por created_at (migración 004) y

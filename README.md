@@ -66,9 +66,11 @@ The exact tradeoff: retry latency is tied to the tick. If nobody has the dashboa
 
 Defined in `src/lib/retry-policy.ts`, a pure module shared by the server drain and the UI countdown:
 
+```ts
+export const BACKOFF_SCHEDULE_S = [10, 30, 90, 300, 300] as const;
 ```
-attempt 1 fails  ->  +10s  ->  +30s  ->  +90s  ->  +5m  ->  +5m  ->  dead-letter
-```
+
+A failed attempt waits the next delay in the list before retrying.
 
 Six attempts maximum, then the delivery is dead-lettered. The schedule is short on purpose (a demo visitor should see backoff growing within a minute), but the shape is the real thing: exponential-ish growth with a cap. Dead-lettered deliveries can be replayed from the UI; a replay keeps the real `attempt_count` history, so a replay against a still-broken endpoint goes straight back to the dead letter instead of inventing a fresh schedule.
 
@@ -80,7 +82,7 @@ Every webhook carries:
 X-Hookwire-Signature: t=1718200000,v1=<hex hmac-sha256>
 ```
 
-where `v1` signs `"<t>.<raw_body>"` with the endpoint's per-endpoint secret. The timestamp inside the signed string gives replay protection (receivers reject anything older than 5 minutes); signing the raw bytes rather than parsed JSON matters because JSON serialization is not canonical, so the receiver must verify against the exact bytes on the wire. The demo receiver (`/api/echo`) does the full verification a real subscriber would: it re-reads the raw body, recomputes the HMAC with its own copy of the secret, compares with `crypto.timingSafeEqual` (no timing oracle) and shows the verdict as the green or red badge in the echo console.
+where `v1` signs `"<t>.<raw_body>"` with the per-endpoint secret. The timestamp inside the signed string gives replay protection (receivers reject anything older than 5 minutes); signing the raw bytes rather than parsed JSON matters because JSON serialization is not canonical, so the receiver must verify against the exact bytes on the wire. The demo receiver (`/api/echo`) does the full verification a real subscriber would: it re-reads the raw body, recomputes the HMAC with its own copy of the secret, compares with `crypto.timingSafeEqual` (no timing oracle) and shows the verdict as the green or red badge in the echo console.
 
 ### At-least-once delivery
 

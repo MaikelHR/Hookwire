@@ -1,11 +1,11 @@
-// rate-limit.js: choca con el rate limit A PROPOSITO para demostrar el 429.
+// rate-limit.js: choca con el rate limit A PROPÓSITO para demostrar el 429.
 // Dispara 40 eventos seguidos desde una IP; la ventana deslizante admite 30
-// cada 5 min, asi que el resto debe responder 429 con el header Retry-After.
-// Correr DESPUES de delivery-flow deja eventos previos en la ventana y el
-// 429 llega antes de los 30: el check no asume el numero exacto.
+// cada 5 min, así que el resto debe responder 429 con el header Retry-After.
+// Correr DESPUÉS de delivery-flow deja eventos previos en la ventana y el
+// 429 llega antes de los 30: el check no asume el número exacto.
 //
 // Ojo: tras correrlo, la IP queda sin presupuesto de eventos por unos
-// minutos (el toast de la UI mostraria exactamente eso).
+// minutos (el toast de la UI mostraría exactamente eso).
 //
 //   k6 run load-test/rate-limit.js
 
@@ -27,7 +27,7 @@ export const options = {
     },
   },
   thresholds: {
-    // El test FALLA si el servidor nunca limito: eso seria un bug
+    // El test FALLA si el servidor nunca limitó: eso sería un bug
     events_rate_limited: ['count>0'],
     checks: ['rate>0.99'],
   },

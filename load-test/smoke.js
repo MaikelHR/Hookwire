@@ -1,5 +1,5 @@
 // smoke.js: lecturas del dashboard (stats, deliveries, endpoints).
-// Estas rutas NO tienen rate limit, asi que es el escenario para subir VUs.
+// Estas rutas NO tienen rate limit, así que es el escenario para subir VUs.
 // Cada VU tiene su propio cookie jar: k6 simula N visitantes con N sesiones
 // aisladas, igual que N navegadores distintos.
 //
@@ -26,7 +26,7 @@ export const options = {
 };
 
 export default function () {
-  // El mismo trio que el dashboard polea cada 4 s
+  // El mismo trío que el dashboard polea cada 4 s
   const stats = http.get(`${BASE_URL}/api/stats`);
   const deliveries = http.get(`${BASE_URL}/api/deliveries`);
   const endpoints = http.get(`${BASE_URL}/api/endpoints`);

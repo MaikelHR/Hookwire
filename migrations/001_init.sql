@@ -1,8 +1,8 @@
 -- 001_init.sql: esquema inicial de Hookwire
 --
--- Modelo: events (lo que publica el cliente) -> deliveries (un intento de
--- entrega por endpoint suscrito, es la unidad de trabajo de la cola) ->
--- delivery_attempts (historial de cada intento HTTP).
+-- Modelo: events es lo que publica el cliente; cada evento genera una
+-- delivery por endpoint suscrito (la unidad de trabajo de la cola); y
+-- delivery_attempts guarda el historial de cada intento HTTP.
 -- Todo lleva session_id: la demo aísla los datos por visitante anónimo
 -- (cookie) y un cleanup borra sesiones de más de 24h.
 

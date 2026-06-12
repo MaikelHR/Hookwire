@@ -2,7 +2,7 @@
 // con el rate limit (30 eventos / 5 min por IP): 1 VU publica un evento cada
 // ~15 s durante 3 min, unos 12 eventos en total. Mide la latencia del POST
 // (que incluye el drain inline: firma + entrega real al echo receiver) y
-// verifica con una lectura que la delivery quedo delivered.
+// verifica con una lectura que la delivery quedó delivered.
 //
 //   k6 run load-test/delivery-flow.js
 
@@ -46,7 +46,7 @@ export default function () {
   });
   if (res.status === 201) publishAndDeliver.add(res.timings.duration);
 
-  // La lectura confirma lo que el drain inline reporto
+  // La lectura confirma lo que el drain inline reportó
   const list = http.get(`${BASE_URL}/api/deliveries`);
   check(list, {
     'delivery visible and delivered': (r) => {
