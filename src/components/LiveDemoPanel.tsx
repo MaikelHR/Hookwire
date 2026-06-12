@@ -110,14 +110,17 @@ export function LiveDemoPanel() {
                   <span className="text-[10px] text-faint">{fmtClock(e.ts)}</span>
                 </div>
                 <div className="flex gap-1.5 mt-1.5 items-center">
-                  {/* La verificación real de firma llega en la Fase 3: el badge
-                      queda visible pero apagado */}
-                  <span
-                    title="coming soon"
-                    className="inline-flex items-center gap-[5px] text-[9.5px] tracking-[0.05em] px-[7px] py-[2px] rounded-full text-faint bg-hov cursor-default"
-                  >
-                    ✓ Signature verified
-                  </span>
+                  {/* Veredicto real del receiver: recalcula el HMAC sobre el
+                      body crudo con su copia del secreto del endpoint */}
+                  {e.verified ? (
+                    <span className="inline-flex items-center gap-[5px] text-[9.5px] tracking-[0.05em] px-[7px] py-[2px] rounded-full text-ok bg-ok/12">
+                      ✓ Signature verified
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-[5px] text-[9.5px] tracking-[0.05em] px-[7px] py-[2px] rounded-full text-err bg-err/12">
+                      ✕ Signature invalid
+                    </span>
+                  )}
                   {e.attempt > 1 ? (
                     <span className="inline-flex items-center gap-[5px] text-[9.5px] tracking-[0.05em] px-[7px] py-[2px] rounded-full text-faint bg-hov">
                       attempt #{e.attempt}

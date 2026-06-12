@@ -153,6 +153,7 @@ interface ApiEchoMessage {
   eventType: string;
   attempt: number;
   statusCode: number;
+  verified: boolean;
   receivedAt: string;
 }
 
@@ -197,7 +198,7 @@ function mapEcho(m: ApiEchoMessage): EchoEntry {
     id: m.id,
     ts: Date.parse(m.receivedAt),
     eventType: m.eventType,
-    verified: true, // la verificación real de firma en el receiver llega en la Fase 3
+    verified: m.verified,
     statusCode: m.statusCode,
     attempt: m.attempt,
   };
