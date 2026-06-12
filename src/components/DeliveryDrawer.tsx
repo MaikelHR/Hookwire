@@ -1,5 +1,5 @@
 import { Fragment } from 'react';
-import { BACKOFF_S, useDeliveries, useDemoActions, useEndpoints } from '../lib/data-service';
+import { BACKOFF_SCHEDULE_S, useDeliveries, useDemoActions, useEndpoints } from '../lib/data-service';
 import { fmtClock } from '../lib/format';
 import { DeliveryPill } from './ui/StatusPill';
 import { Button, IconButton } from './ui/Button';
@@ -45,12 +45,10 @@ export function DeliveryDrawer({ deliveryId, onClose }: { deliveryId: string; on
             </div>
           </div>
           <div className="flex gap-2">
-            {/* El replay manual llega en la Fase 2: visible pero inerte */}
-            <span title="coming soon">
-              <Button size="small" onClick={() => replayDelivery(d.id)} disabled>
-                ⟳ Replay delivery
-              </Button>
-            </span>
+            {/* Deshabilitado solo si ya está en cola (re-encolarla no haría nada) */}
+            <Button size="small" onClick={() => replayDelivery(d.id)} disabled={d.status === 'pending'}>
+              ⟳ Replay delivery
+            </Button>
             <IconButton onClick={onClose}>esc ✕</IconButton>
           </div>
         </div>
@@ -88,7 +86,7 @@ export function DeliveryDrawer({ deliveryId, onClose }: { deliveryId: string; on
               {d.attempts.map((a, i) => {
                 const ok = a.statusCode >= 200 && a.statusCode < 300;
                 const hasNext = i < d.attempts.length - 1 || (d.status === 'retrying' && d.nextRetryAt !== null);
-                const gapS = BACKOFF_S[i] ?? 300;
+                const gapS = BACKOFF_SCHEDULE_S[i] ?? 300;
                 return (
                   <div key={i} className="grid grid-cols-[22px_1fr] gap-x-3">
                     <div className="relative flex flex-col items-center">

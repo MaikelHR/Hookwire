@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react';
-import { EVENT_TYPES, useDemoActions, useEcho, useFailureMode } from '../lib/data-service';
+import { EVENT_TYPES, useDemoActions, useEcho, useEndpoints, useFailureMode } from '../lib/data-service';
 import { fmtClock } from '../lib/format';
 import { Button } from './ui/Button';
 import { EmptyState } from './ui/Skeleton';
 
 export function LiveDemoPanel() {
   const echo = useEcho();
+  const endpoints = useEndpoints();
   const failureMode = useFailureMode();
   const { sendTestEvent, setFailureMode } = useDemoActions();
   const [eventType, setEventType] = useState('user.created');
@@ -56,14 +57,15 @@ export function LiveDemoPanel() {
             {sending ? '⟳ sending…' : '▸ Send test event'}
           </Button>
         </div>
-        {/* El toggle se habilita en la Fase 2: queda visible pero inerte */}
-        <div className="flex items-start gap-2.5" title="coming soon">
+        {/* Deshabilitado solo hasta que cargue el endpoint demo: el PATCH
+            necesita su id */}
+        <div className="flex items-start gap-2.5">
           <button
-            disabled
+            disabled={endpoints.length === 0}
             onClick={() => setFailureMode(!failureMode)}
-            aria-label="Simulate endpoint failure (coming soon)"
+            aria-label="Simulate endpoint failure"
             className={
-              'w-[34px] h-[19px] flex-none rounded-full border relative p-0 transition-[background-color,border-color] duration-[180ms] opacity-60 cursor-not-allowed ' +
+              'w-[34px] h-[19px] flex-none rounded-full border relative p-0 transition-[background-color,border-color] duration-[180ms] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ' +
               (failureMode ? 'bg-err/25 border-err' : 'bg-inset border-line-strong')
             }
           >

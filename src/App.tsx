@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTick } from './lib/data-service';
 import { Sidebar, type ViewId } from './components/Sidebar';
 import { LiveDemoPanel } from './components/LiveDemoPanel';
 import { DeliveryDrawer } from './components/DeliveryDrawer';
@@ -11,6 +12,9 @@ import { DeliveriesView } from './views/DeliveriesView';
 const INTRO_KEY = 'hookwire_intro_seen';
 
 export default function App() {
+  // Hace avanzar la cola (reintentos vencidos) mientras el dashboard está abierto
+  useTick();
+
   const [mode, setMode] = useState<'dark' | 'light'>('dark');
   const [view, setView] = useState<ViewId>('overview');
   const [endpointId, setEndpointId] = useState<string | null>(null);

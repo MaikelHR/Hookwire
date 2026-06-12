@@ -1,5 +1,5 @@
 /* ============================================================
-   Hookwire data service (Fase 1: API real)
+   Hookwire data service
    Misma superficie pública que el mock de la Fase 0: la UI consume
    SOLO estos hooks y tipos, así que cambiar el mock por la API real
    no tocó ningún componente.
@@ -7,9 +7,17 @@
    Transporte: TanStack Query con polling (refetchInterval). El
    polling es una decisión deliberada de la arquitectura: mientras
    el dashboard está abierto re-consulta /api/* cada pocos segundos
-   en lugar de mantener websockets.
+   en lugar de mantener websockets. Desde la Fase 2 el mismo ciclo
+   incluye useTick, que dispara los reintentos vencidos de la cola.
    ============================================================ */
+import { useEffect } from 'react';
 import { QueryClient, useQuery, useQueryClient } from '@tanstack/react-query';
+import { MAX_ATTEMPTS } from './retry-policy';
+
+/* La política de reintentos vive en retry-policy.ts (módulo puro
+   compartido con el drain del servidor); la UI la importa desde aquí
+   para respetar la regla de consumir solo el data service. */
+export { BACKOFF_SCHEDULE_S, MAX_ATTEMPTS } from './retry-policy';
 
 // ---------- types (idénticos a la Fase 0) ----------
 export type EndpointStatus = 'healthy' | 'failing' | 'disabled';
@@ -25,6 +33,7 @@ export interface Endpoint {
   successRate: number;
   lastDeliveryAt: number;
   secret: string;
+  simulateFailure: boolean;
   createdAt: number;
 }
 
@@ -75,10 +84,9 @@ export interface DemoActions {
 
 // ---------- constants ----------
 export const EVENT_TYPES: readonly string[] = ['user.created', 'payment.completed', 'ticket.assigned'];
-export const BACKOFF_S: readonly number[] = [10, 30, 90, 300, 300]; // segundos antes del intento 2..6 (Fase 2)
-export const MAX_ATTEMPTS = 6;
 
-const POLL_MS = 4000; // polling del dashboard (decisión de arquitectura: 3-5 s)
+const POLL_MS = 4000; // polling de lecturas del dashboard (decisión de arquitectura: 3-5 s)
+const TICK_MS = 4000; // cadencia de POST /api/tick mientras la pestaña está visible
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -106,7 +114,17 @@ interface ApiEndpoint {
   successRate: number;
   lastDeliveryAt: string | null;
   secret: string;
+  simulateFailure: boolean;
   createdAt: string;
+}
+
+/* Copia cliente de DrainResult (src/lib/server/drain.ts no se importa
+   desde el cliente: arrastra node:crypto y el driver de Neon). */
+interface ApiDrainResult {
+  processed: number;
+  delivered: number;
+  retrying: number;
+  deadLettered: number;
 }
 
 interface ApiAttempt {
@@ -147,6 +165,7 @@ function mapEndpoint(e: ApiEndpoint): Endpoint {
     successRate: e.successRate,
     lastDeliveryAt: e.lastDeliveryAt !== null ? Date.parse(e.lastDeliveryAt) : 0,
     secret: e.secret,
+    simulateFailure: e.simulateFailure,
     createdAt: Date.parse(e.createdAt),
   };
 }
@@ -300,8 +319,81 @@ export function useEcho(): EchoEntry[] {
   return data ?? EMPTY_ECHO;
 }
 
+/* ON si algún endpoint de la sesión está en modo fallo (la demo tiene
+   uno). Deriva del mismo cache de useEndpoints: una sola fuente. */
 export function useFailureMode(): boolean {
-  return false; // el toggle de fallo se activa en la Fase 2
+  const endpoints = useEndpoints();
+  return endpoints.some((e) => e.simulateFailure);
+}
+
+/* El "reloj" de la cola: mientras el dashboard está abierto dispara
+   POST /api/tick cada TICK_MS para que los reintentos vencidos avancen
+   (no hay worker 24/7; el dashboard es quien hace avanzar la cola).
+   Dos cuidados con el free tier de Vercel:
+   - visibilitychange detiene el interval cuando la pestaña se oculta y
+     al volver dispara un tick inmediato (procesa lo vencido de golpe)
+     antes de reanudar la cadencia.
+   - solo llama a la API si el cache de deliveries muestra trabajo vivo
+     (pending o retrying); con la cola en reposo no gasta invocaciones.
+     El cache se refresca cada POLL_MS, así que el primer tick tras
+     publicar llega a más tardar un poll después.
+   Que dos pestañas tickeen a la vez es inofensivo: el claim del drain
+   usa SKIP LOCKED y cada delivery la procesa exactamente una. */
+export function useTick(): void {
+  const qc = useQueryClient();
+
+  useEffect(() => {
+    let inFlight = false;
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const tick = async (): Promise<void> => {
+      if (inFlight) return;
+      const deliveries = qc.getQueryData<Delivery[]>(['deliveries']);
+      const hasWork = deliveries?.some((d) => d.status === 'pending' || d.status === 'retrying') ?? false;
+      if (!hasWork) return;
+      inFlight = true;
+      try {
+        const body = await fetchJson<{ drain: ApiDrainResult }>('/api/tick', { method: 'POST' });
+        if (body.drain.processed > 0) {
+          await Promise.all([
+            qc.invalidateQueries({ queryKey: ['deliveries'] }),
+            qc.invalidateQueries({ queryKey: ['stats'] }),
+            qc.invalidateQueries({ queryKey: ['echo'] }),
+            qc.invalidateQueries({ queryKey: ['endpoints'] }),
+          ]);
+        }
+      } catch (err) {
+        console.error('tick failed:', err);
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    const start = (): void => {
+      if (interval === null) interval = setInterval(() => void tick(), TICK_MS);
+    };
+    const stop = (): void => {
+      if (interval !== null) {
+        clearInterval(interval);
+        interval = null;
+      }
+    };
+    const onVisibility = (): void => {
+      if (document.hidden) {
+        stop();
+      } else {
+        void tick();
+        start();
+      }
+    };
+
+    start();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [qc]);
 }
 
 export function useDemoActions(): DemoActions {
@@ -331,7 +423,35 @@ export function useDemoActions(): DemoActions {
         .catch((err: unknown) => console.error('sendTestEvent failed:', err));
       return id;
     },
-    setFailureMode: () => undefined, // Fase 2
-    replayDelivery: () => undefined, // Fase 2
+    /* Persiste simulate_failure en el endpoint demo. Update optimista:
+       el toggle responde al instante con el valor deseado y el PATCH
+       más la invalidación confirman (o revierten) el estado real. */
+    setFailureMode: (on: boolean): void => {
+      const target = qc.getQueryData<Endpoint[]>(['endpoints'])?.[0];
+      if (!target) return;
+      qc.setQueryData<Endpoint[]>(['endpoints'], (list) =>
+        (list ?? []).map((e) =>
+          e.id === target.id ? { ...e, simulateFailure: on, status: on ? 'failing' : 'healthy' } : e,
+        ),
+      );
+      void fetchJson('/api/endpoints', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: target.id, simulateFailure: on }),
+      })
+        .catch((err: unknown) => console.error('setFailureMode failed:', err))
+        .finally(() => void qc.invalidateQueries({ queryKey: ['endpoints'] }));
+    },
+    /* Re-encola la delivery (el caso estrella: revivir una dead-lettered
+       cuando el endpoint se recupera) y el servidor la drena inline. */
+    replayDelivery: (id: string): void => {
+      void fetchJson('/api/replay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deliveryId: id }),
+      })
+        .then(refreshAll)
+        .catch((err: unknown) => console.error('replayDelivery failed:', err));
+    },
   };
 }
