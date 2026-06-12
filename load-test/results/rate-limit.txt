@@ -1,0 +1,68 @@
+
+         /\      Grafana   /‾‾/  
+    /\  /  \     |\  __   /  /   
+   /  \/    \    | |/ /  /   ‾‾\ 
+  /          \   |   (  |  (‾)  |
+ / __________ \  |_|\_\  \_____/ 
+
+
+     execution: local
+        script: load-test/rate-limit.js
+        output: -
+
+     scenarios: (100.00%) 1 scenario, 4 max VUs, 10m30s max duration (incl. graceful stop):
+              * burst: 40 iterations shared among 4 VUs (maxDuration: 10m0s, gracefulStop: 30s)
+
+
+running (00m01.0s), 4/4 VUs, 5 complete and 0 interrupted iterations
+burst   [  12% ] 4 VUs  00m01.0s/10m0s  05/40 shared iters
+
+running (00m02.0s), 4/4 VUs, 26 complete and 0 interrupted iterations
+burst   [  65% ] 4 VUs  00m02.0s/10m0s  26/40 shared iters
+
+
+  █ THRESHOLDS 
+
+    checks
+    ✓ 'rate>0.99' rate=100.00%
+
+    events_rate_limited
+    ✓ 'count>0' count=23
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 86      35.762477/s
+    checks_succeeded...: 100.00% 86 out of 86
+    checks_failed......: 0.00%   0 out of 86
+
+    ✓ accepted has drain result
+    ✓ limited is 429
+    ✓ 429 carries Retry-After seconds
+    ✓ 429 body repeats retryAfterS
+
+    CUSTOM
+    events_accepted................: 17     7.069327/s
+    events_rate_limited............: 23     9.564384/s
+
+    HTTP
+    http_req_duration..............: avg=206.07ms min=100.01ms med=120.07ms max=991.22ms p(90)=304.19ms p(95)=488.54ms
+      { expected_response:true }...: avg=329.6ms  min=187.83ms med=216.77ms max=991.22ms p(90)=663.81ms p(95)=969.67ms
+    http_req_failed................: 57.49% 23 out of 40
+    http_reqs......................: 40     16.63371/s
+
+    EXECUTION
+    iteration_duration.............: avg=235.39ms min=103.71ms med=120.76ms max=1.27s    p(90)=468.93ms p(95)=677.28ms
+    iterations.....................: 40     16.63371/s
+    vus............................: 4      min=4        max=4
+    vus_max........................: 4      min=4        max=4
+
+    NETWORK
+    data_received..................: 39 kB  16 kB/s
+    data_sent......................: 15 kB  6.3 kB/s
+
+
+
+
+running (00m02.4s), 0/4 VUs, 40 complete and 0 interrupted iterations
+burst ✓ [ 100% ] 4 VUs  00m02.4s/10m0s  40/40 shared iters

@@ -1,0 +1,154 @@
+{
+    "metrics": {
+        "http_reqs": {
+            "count": 420,
+            "rate": 6.741596418282279
+        },
+        "data_received": {
+            "count": 209127,
+            "rate": 3356.7853194431386
+        },
+        "http_req_connecting": {
+            "max": 58.0227,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 1.2228083333333335,
+            "min": 0,
+            "med": 0
+        },
+        "iteration_duration": {
+            "avg": 4408.208920000002,
+            "min": 4291.683,
+            "med": 4328.28935,
+            "max": 5630.7024,
+            "p(90)": 4486.91042,
+            "p(95)": 4971.038184999995
+        },
+        "http_req_sending": {
+            "p(90)": 0.9899800000000002,
+            "p(95)": 1.015645,
+            "avg": 0.29812499999999986,
+            "min": 0,
+            "med": 0,
+            "max": 9.3677
+        },
+        "http_req_receiving": {
+            "max": 3.4029,
+            "p(90)": 0.8695300000000009,
+            "p(95)": 1.00163,
+            "avg": 0.1495328571428572,
+            "min": 0,
+            "med": 0
+        },
+        "vus_max": {
+            "value": 10,
+            "min": 10,
+            "max": 10
+        },
+        "http_req_duration{expected_response:true}": {
+            "p(95)": 217.3069849999999,
+            "avg": 127.94956595238094,
+            "min": 90.6021,
+            "med": 106.78555,
+            "max": 848.2224,
+            "p(90)": 141.93238000000008
+        },
+        "data_sent": {
+            "count": 38921,
+            "rate": 624.7373195142014
+        },
+        "http_req_failed": {
+            "passes": 0,
+            "fails": 420,
+            "thresholds": {
+                "rate<0.01": false
+            },
+            "value": 0
+        },
+        "http_req_tls_handshaking": {
+            "min": 0,
+            "med": 0,
+            "max": 170.4956,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 3.9812392857142864
+        },
+        "vus": {
+            "value": 3,
+            "min": 3,
+            "max": 10
+        },
+        "http_req_blocked": {
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 7.152492857142857,
+            "min": 0,
+            "med": 0,
+            "max": 301.5515
+        },
+        "http_req_duration": {
+            "min": 90.6021,
+            "med": 106.78555,
+            "max": 848.2224,
+            "p(90)": 141.93238000000008,
+            "p(95)": 217.3069849999999,
+            "avg": 127.94956595238094,
+            "thresholds": {
+                "p(95)<1500": false
+            }
+        },
+        "http_req_waiting": {
+            "min": 83.915,
+            "med": 106.5977,
+            "max": 843.6899,
+            "p(90)": 140.9839200000001,
+            "p(95)": 212.67428999999976,
+            "avg": 127.50190809523812
+        },
+        "iterations": {
+            "rate": 2.247198806094093,
+            "count": 140
+        },
+        "checks": {
+            "passes": 560,
+            "fails": 0,
+            "value": 1
+        }
+    },
+    "root_group": {
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "stats 200": {
+                    "path": "::stats 200",
+                    "id": "372ed7a2e9a6ed3bef752e28c5df1a14",
+                    "passes": 140,
+                    "fails": 0,
+                    "name": "stats 200"
+                },
+                "deliveries 200": {
+                    "fails": 0,
+                    "name": "deliveries 200",
+                    "path": "::deliveries 200",
+                    "id": "87d536b1e3a51adbf093371e091654f6",
+                    "passes": 140
+                },
+                "endpoints 200": {
+                    "passes": 140,
+                    "fails": 0,
+                    "name": "endpoints 200",
+                    "path": "::endpoints 200",
+                    "id": "13c787896a4985f31a27c2a610326230"
+                },
+                "session seeded with demo endpoint": {
+                    "id": "564f18551f52776f632b23f590459410",
+                    "passes": 140,
+                    "fails": 0,
+                    "name": "session seeded with demo endpoint",
+                    "path": "::session seeded with demo endpoint"
+                }
+            },
+        "name": "",
+        "path": ""
+    }
+}

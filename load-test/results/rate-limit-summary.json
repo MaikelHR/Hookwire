@@ -1,0 +1,162 @@
+{
+    "metrics": {
+        "http_req_connecting": {
+            "avg": 5.0762875,
+            "min": 0,
+            "med": 0,
+            "max": 51.7659,
+            "p(90)": 4.89880000000007,
+            "p(95)": 51.04863
+        },
+        "iterations": {
+            "count": 40,
+            "rate": 16.63371043479646
+        },
+        "events_rate_limited": {
+            "count": 23,
+            "rate": 9.564383500007963,
+            "thresholds": {
+                "count>0": false
+            }
+        },
+        "http_req_failed": {
+            "passes": 23,
+            "fails": 17,
+            "value": 0.575
+        },
+        "http_req_blocked": {
+            "avg": 28.384645,
+            "min": 0,
+            "med": 0,
+            "max": 289.6855,
+            "p(90)": 27.988560000000398,
+            "p(95)": 281.967975
+        },
+        "iteration_duration": {
+            "avg": 235.39684000000003,
+            "min": 103.7181,
+            "med": 120.76535,
+            "max": 1272.4225,
+            "p(90)": 468.93054000000006,
+            "p(95)": 677.2885899999983
+        },
+        "http_req_duration{expected_response:true}": {
+            "p(95)": 969.67238,
+            "avg": 329.60543529411757,
+            "min": 187.8317,
+            "med": 216.7796,
+            "max": 991.2211,
+            "p(90)": 663.8159400000002
+        },
+        "http_reqs": {
+            "count": 40,
+            "rate": 16.63371043479646
+        },
+        "http_req_duration": {
+            "avg": 206.07738,
+            "min": 100.0124,
+            "med": 120.07075,
+            "max": 991.2211,
+            "p(90)": 304.19277000000005,
+            "p(95)": 488.5422049999986
+        },
+        "http_req_tls_handshaking": {
+            "avg": 12.157419999999998,
+            "min": 0,
+            "med": 0,
+            "max": 125.9898,
+            "p(90)": 11.91867000000017,
+            "p(95)": 119.779265
+        },
+        "http_req_waiting": {
+            "avg": 205.55425,
+            "min": 99.009,
+            "med": 119.3021,
+            "max": 990.6582,
+            "p(90)": 304.14020000000005,
+            "p(95)": 487.0733849999986
+        },
+        "vus_max": {
+            "min": 4,
+            "max": 4,
+            "value": 4
+        },
+        "checks": {
+            "passes": 86,
+            "fails": 0,
+            "thresholds": {
+                "rate>0.99": false
+            },
+            "value": 1
+        },
+        "http_req_sending": {
+            "avg": 0.34847,
+            "min": 0,
+            "med": 0,
+            "max": 1.5165,
+            "p(90)": 1.01184,
+            "p(95)": 1.0791649999999986
+        },
+        "data_sent": {
+            "rate": 6341.602103266149,
+            "count": 15250
+        },
+        "http_req_receiving": {
+            "avg": 0.17465999999999998,
+            "min": 0,
+            "med": 0,
+            "max": 1.0407,
+            "p(90)": 1.00223,
+            "p(95)": 1.0194549999999998
+        },
+        "events_accepted": {
+            "count": 17,
+            "rate": 7.069326934788495
+        },
+        "data_received": {
+            "count": 39388,
+            "rate": 16379.214665144073
+        },
+        "vus": {
+            "min": 4,
+            "max": 4,
+            "value": 4
+        }
+    },
+    "root_group": {
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "accepted has drain result": {
+                    "name": "accepted has drain result",
+                    "path": "::accepted has drain result",
+                    "id": "2a80a4a37c863785f251655947d45515",
+                    "passes": 17,
+                    "fails": 0
+                },
+                "limited is 429": {
+                    "fails": 0,
+                    "name": "limited is 429",
+                    "path": "::limited is 429",
+                    "id": "d756a8bbb05d40b10db54a98739ae25f",
+                    "passes": 23
+                },
+                "429 carries Retry-After seconds": {
+                    "name": "429 carries Retry-After seconds",
+                    "path": "::429 carries Retry-After seconds",
+                    "id": "08925bac761add60dcbaa9bc0d2bf1d5",
+                    "passes": 23,
+                    "fails": 0
+                },
+                "429 body repeats retryAfterS": {
+                    "name": "429 body repeats retryAfterS",
+                    "path": "::429 body repeats retryAfterS",
+                    "id": "94d2b6fb2fe70722c660c51e3e5539a2",
+                    "passes": 23,
+                    "fails": 0
+                }
+            },
+        "name": ""
+    }
+}
