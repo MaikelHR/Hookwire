@@ -1,17 +1,17 @@
 /* ============================================================
-   Hookwire data service (mock, Fase 0)
-   Port directo de design_handoff_hookwire_dashboard/js/data-service.js.
+   Hookwire data service (Fase 1: API real)
+   Misma superficie pública que el mock de la Fase 0: la UI consume
+   SOLO estos hooks y tipos, así que cambiar el mock por la API real
+   no tocó ningún componente.
 
-   - Todo el estado + lógica de simulación vive aquí.
-   - La UI lo consume SOLO a través de los hooks exportados:
-       useStats, useEndpoints, useDeliveries, useEcho,
-       useFailureMode, useDemoActions
-   - En fases siguientes este módulo se cambia por la API REST real
-     (/api/*) sin tocar ningún componente.
+   Transporte: TanStack Query con polling (refetchInterval). El
+   polling es una decisión deliberada de la arquitectura: mientras
+   el dashboard está abierto re-consulta /api/* cada pocos segundos
+   en lugar de mantener websockets.
    ============================================================ */
-import { useSyncExternalStore } from 'react';
+import { QueryClient, useQuery, useQueryClient } from '@tanstack/react-query';
 
-// ---------- types ----------
+// ---------- types (idénticos a la Fase 0) ----------
 export type EndpointStatus = 'healthy' | 'failing' | 'disabled';
 export type DeliveryStatus = 'pending' | 'delivered' | 'retrying' | 'failed' | 'dead';
 
@@ -75,26 +75,116 @@ export interface DemoActions {
 
 // ---------- constants ----------
 export const EVENT_TYPES: readonly string[] = ['user.created', 'payment.completed', 'ticket.assigned'];
-export const BACKOFF_S: readonly number[] = [10, 30, 90, 300, 300]; // segundos antes del intento 2..6
+export const BACKOFF_S: readonly number[] = [10, 30, 90, 300, 300]; // segundos antes del intento 2..6 (Fase 2)
 export const MAX_ATTEMPTS = 6;
 
-const now = (): number => Date.now();
-const rand = (a: number, b: number): number => a + Math.random() * (b - a);
-const rint = (a: number, b: number): number => Math.round(rand(a, b));
-const pick = <T,>(arr: readonly T[]): T => arr[Math.floor(Math.random() * arr.length)] as T;
+const POLL_MS = 4000; // polling del dashboard (decisión de arquitectura: 3-5 s)
 
-let idCounter = 1000;
-function uid(prefix: string): string {
-  return prefix + '_' + (idCounter++).toString(36) + Math.random().toString(36).slice(2, 6);
+export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchInterval: POLL_MS,
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+});
+
+// ---------- transporte ----------
+async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, init);
+  if (!res.ok) throw new Error(`${init?.method ?? 'GET'} ${url} failed with ${res.status}`);
+  return (await res.json()) as T;
 }
 
-function hex(n: number): string {
-  let s = '';
-  for (let i = 0; i < n; i++) s += '0123456789abcdef'[Math.floor(Math.random() * 16)];
-  return s;
+// Formas que devuelve /api/* (fechas ISO, status de la base de datos)
+interface ApiEndpoint {
+  id: string;
+  name: string;
+  url: string;
+  status: EndpointStatus;
+  successRate: number;
+  lastDeliveryAt: string | null;
+  secret: string;
+  createdAt: string;
 }
 
-// ---------- payloads ----------
+interface ApiAttempt {
+  ts: string;
+  statusCode: number;
+  durationMs: number;
+  body: string;
+}
+
+interface ApiDelivery {
+  id: string;
+  eventId: string;
+  eventType: string;
+  endpointId: string;
+  status: 'pending' | 'delivered' | 'retrying' | 'failed' | 'dead_lettered';
+  attempts: ApiAttempt[];
+  nextAttemptAt: string | null;
+  latencyMs: number | null;
+  payload: JsonObject;
+  signature: string | null;
+  createdAt: string;
+}
+
+interface ApiEchoMessage {
+  id: string;
+  eventType: string;
+  attempt: number;
+  statusCode: number;
+  receivedAt: string;
+}
+
+function mapEndpoint(e: ApiEndpoint): Endpoint {
+  return {
+    id: e.id,
+    name: e.name,
+    url: e.url,
+    status: e.status,
+    successRate: e.successRate,
+    lastDeliveryAt: e.lastDeliveryAt !== null ? Date.parse(e.lastDeliveryAt) : 0,
+    secret: e.secret,
+    createdAt: Date.parse(e.createdAt),
+  };
+}
+
+function mapDelivery(d: ApiDelivery): Delivery {
+  return {
+    id: d.id,
+    eventId: d.eventId,
+    eventType: d.eventType,
+    endpointId: d.endpointId,
+    status: d.status === 'dead_lettered' ? 'dead' : d.status,
+    attempts: d.attempts.map((a) => ({
+      ts: Date.parse(a.ts),
+      statusCode: a.statusCode,
+      durationMs: a.durationMs,
+      body: a.body,
+    })),
+    maxAttempts: MAX_ATTEMPTS,
+    nextRetryAt: d.nextAttemptAt !== null ? Date.parse(d.nextAttemptAt) : null,
+    latencyMs: d.latencyMs !== null ? Math.round(d.latencyMs) : null,
+    payload: d.payload,
+    signature: d.signature ?? '',
+    createdAt: Date.parse(d.createdAt),
+  };
+}
+
+function mapEcho(m: ApiEchoMessage): EchoEntry {
+  return {
+    id: m.id,
+    ts: Date.parse(m.receivedAt),
+    eventType: m.eventType,
+    verified: true, // la verificación real de firma en el receiver llega en la Fase 3
+    statusCode: m.statusCode,
+    attempt: m.attempt,
+  };
+}
+
+// ---------- payload de ejemplo del botón "Send test event" ----------
 const NAMES = ['Ada Park', 'Tomás Rivera', 'Mina Okafor', 'Jules Bernard', 'Sofía Quintero', 'Ravi Patel'] as const;
 const SUBJECTS = [
   'Cannot reset password',
@@ -104,7 +194,17 @@ const SUBJECTS = [
   'API key rotation help',
 ] as const;
 
-function makePayload(eventType: string): JsonObject {
+const rand = (a: number, b: number): number => a + Math.random() * (b - a);
+const rint = (a: number, b: number): number => Math.round(rand(a, b));
+const pick = <T,>(arr: readonly T[]): T => arr[Math.floor(Math.random() * arr.length)] as T;
+
+function hex(n: number): string {
+  let s = '';
+  for (let i = 0; i < n; i++) s += '0123456789abcdef'[Math.floor(Math.random() * 16)];
+  return s;
+}
+
+function makeSamplePayload(eventType: string): JsonObject {
   const base: JsonObject = {
     id: 'evt_' + hex(14),
     type: eventType,
@@ -144,296 +244,94 @@ function makePayload(eventType: string): JsonObject {
   return base;
 }
 
-function makeSignature(ts: number): string {
-  return 't=' + Math.floor(ts / 1000) + ',v1=' + hex(64);
-}
-
-// ---------- store ----------
-interface StoreState {
-  endpoints: Endpoint[];
-  deliveries: Delivery[]; // newest first
-  echo: EchoEntry[]; // newest first, inbox del demo receiver
-  failureMode: boolean;
-  chart: number[]; // 12 buckets x 5 min
-  base: { published: number; delivered: number; failedFinal: number };
-  latencies: number[];
-}
-
-const listeners = new Set<() => void>();
-let version = 0;
-
-function emit(): void {
-  version++;
-  listeners.forEach((l) => l());
-}
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
-const state: StoreState = {
-  endpoints: [],
-  deliveries: [],
-  echo: [],
-  failureMode: false,
-  chart: [],
-  base: { published: 12847, delivered: 12480, failedFinal: 67 },
-  latencies: [],
-};
-
-// ---------- seed ----------
-function makeDelivery(eventType: string, endpointId: string, createdAt: number): Delivery {
-  return {
-    id: uid('dlv'),
-    eventId: 'evt_' + hex(14),
-    eventType,
-    endpointId,
-    status: 'pending',
-    attempts: [],
-    maxAttempts: MAX_ATTEMPTS,
-    nextRetryAt: null,
-    latencyMs: null,
-    payload: makePayload(eventType),
-    signature: makeSignature(createdAt),
-    createdAt,
-  };
-}
-
-function makeAttempt(ts: number, statusCode: number, durationMs: number): DeliveryAttempt {
-  const ok = statusCode >= 200 && statusCode < 300;
-  return {
-    ts,
-    statusCode,
-    durationMs,
-    body: ok
-      ? '{"ok":true,"received":true}'
-      : statusCode === 503
-        ? '{"error":"Service Unavailable"}'
-        : '{"error":"Internal Server Error"}',
-  };
-}
-
-function seed(): void {
-  const t = now();
-  state.endpoints = [
-    { id: 'ep_demo', name: 'Demo receiver (echo)', url: 'https://demo.hookwire.dev/echo', status: 'healthy', successRate: 100, lastDeliveryAt: t - 6 * 60000, secret: 'whsec_' + hex(32), createdAt: t - 86400000 * 4 },
-    { id: 'ep_billing', name: 'Billing service', url: 'https://api.acme-billing.com/hooks/hookwire', status: 'healthy', successRate: 99.2, lastDeliveryAt: t - 2 * 60000, secret: 'whsec_' + hex(32), createdAt: t - 86400000 * 31 },
-    { id: 'ep_crm', name: 'Legacy CRM sync', url: 'https://crm.internal.example/webhook', status: 'failing', successRate: 62.4, lastDeliveryAt: t - 14 * 60000, secret: 'whsec_' + hex(32), createdAt: t - 86400000 * 9 },
-    { id: 'ep_mirror', name: 'Staging mirror', url: 'https://staging.acme.dev/hooks/inbound', status: 'disabled', successRate: 97.8, lastDeliveryAt: t - 86400000 * 2, secret: 'whsec_' + hex(32), createdAt: t - 86400000 * 18 },
-  ];
-
-  // historial (~21 deliveries en la última hora)
-  const rows: Delivery[] = [];
-  for (let i = 0; i < 21; i++) {
-    const ageMin = 2 + i * rand(2.4, 4.2);
-    const created = t - ageMin * 60000;
-    const evt = pick(EVENT_TYPES);
-    const ep = pick(['ep_demo', 'ep_billing', 'ep_billing', 'ep_crm'] as const);
-    let status: DeliveryStatus = 'delivered';
-    if (ep === 'ep_crm') status = pick(['delivered', 'failed', 'dead', 'dead'] as const);
-    const d = makeDelivery(evt, ep, created);
-    if (status === 'delivered') {
-      const dur = rint(58, 240);
-      d.attempts.push(makeAttempt(created + dur, 200, dur));
-      d.status = 'delivered';
-      d.latencyMs = dur;
-      state.latencies.push(dur);
-    } else {
-      const nAtt = status === 'dead' ? MAX_ATTEMPTS : rint(2, 4);
-      let at = created;
-      for (let k = 0; k < nAtt; k++) {
-        const dur2 = rint(900, 3000); // los timeouts/errores son lentos
-        d.attempts.push(makeAttempt(at + dur2, pick([500, 502, 503] as const), dur2));
-        at += (BACKOFF_S[Math.min(k, BACKOFF_S.length - 1)] ?? 300) * 1000;
-      }
-      d.status = status === 'dead' ? 'dead' : 'failed';
-    }
-    rows.push(d);
-  }
-
-  // una delivery viva en retry contra el endpoint que falla
-  const live = makeDelivery('payment.completed', 'ep_crm', t - 52000);
-  live.attempts.push(makeAttempt(t - 50000, 503, 2104));
-  live.attempts.push(makeAttempt(t - 20000, 500, 1873));
-  live.status = 'retrying';
-  live.nextRetryAt = t + 70000; // backoff de 90s tras el intento 2
-  rows.unshift(live);
-
-  rows.sort((a, b) => b.createdAt - a.createdAt);
-  state.deliveries = rows;
-
-  // chart: 12 buckets de 5 minutos
-  state.chart = [];
-  for (let i = 0; i < 12; i++) state.chart.push(rint(16, 44));
-
-  // latencias base
-  for (let i = 0; i < 40; i++) state.latencies.push(rint(60, 420));
-}
-
-// ---------- simulación ----------
-function endpointById(id: string): Endpoint | undefined {
-  return state.endpoints.find((e) => e.id === id);
-}
-
-function attemptShouldFail(delivery: Delivery): boolean {
-  const ep = endpointById(delivery.endpointId);
-  if (!ep) return true;
-  if (ep.id === 'ep_demo') return state.failureMode;
-  return ep.status === 'failing';
-}
-
-function performAttempt(delivery: Delivery): void {
-  const t = now();
-  const fail = attemptShouldFail(delivery);
-  const dur = fail ? rint(700, 2400) : rint(45, 210);
-  const code = fail ? pick([500, 500, 503] as const) : 200;
-  delivery.attempts.push(makeAttempt(t, code, dur));
-
-  const ep = endpointById(delivery.endpointId);
-  const isDemo = delivery.endpointId === 'ep_demo';
-
-  if (isDemo) {
-    state.echo.unshift({
-      id: uid('echo'),
-      ts: t,
-      eventType: delivery.eventType,
-      verified: !fail,
-      statusCode: code,
-      attempt: delivery.attempts.length,
-    });
-    if (state.echo.length > 30) state.echo.length = 30;
-  }
-
-  if (!fail) {
-    delivery.status = 'delivered';
-    delivery.nextRetryAt = null;
-    delivery.latencyMs = t - delivery.createdAt;
-    state.latencies.push(dur);
-    if (state.latencies.length > 200) state.latencies.shift();
-    state.base.delivered++;
-    if (ep) ep.lastDeliveryAt = t;
-    bumpChart();
-  } else if (delivery.attempts.length >= delivery.maxAttempts) {
-    delivery.status = 'dead';
-    delivery.nextRetryAt = null;
-    state.base.failedFinal++;
-  } else {
-    delivery.status = 'retrying';
-    const backoff = BACKOFF_S[delivery.attempts.length - 1] ?? 300;
-    delivery.nextRetryAt = t + backoff * 1000;
-  }
-  emit();
-}
-
-function bumpChart(): void {
-  const last = state.chart.length - 1;
-  state.chart[last] = (state.chart[last] ?? 0) + 1;
-}
-
-// ticker: dispara retries vencidos + refresca los countdowns
-setInterval(() => {
-  const t = now();
-  let dirty = false;
-  state.deliveries.forEach((d) => {
-    if (d.status === 'retrying' && d.nextRetryAt !== null && d.nextRetryAt <= t) {
-      performAttempt(d); // ya hace emit()
-    } else if (d.status === 'retrying' || d.status === 'pending') {
-      dirty = true; // los countdowns necesitan re-render
-    }
-  });
-  if (dirty) emit();
-}, 500);
-
-// ---------- actions ----------
-function sendTestEvent(eventType?: string): string {
-  const t = now();
-  const d = makeDelivery(eventType ?? pick(EVENT_TYPES), 'ep_demo', t);
-  state.deliveries.unshift(d);
-  state.base.published++;
-  bumpChart();
-  emit();
-  setTimeout(() => performAttempt(d), rint(450, 900));
-  return d.id;
-}
-
-function setFailureMode(on: boolean): void {
-  state.failureMode = on;
-  const ep = endpointById('ep_demo');
-  if (ep) ep.status = on ? 'failing' : 'healthy';
-  // al recuperarse: adelanta el próximo retry para que la recuperación se vea rápido
-  if (!on) {
-    const t = now();
-    state.deliveries.forEach((d) => {
-      if (d.endpointId === 'ep_demo' && d.status === 'retrying') {
-        d.nextRetryAt = Math.min(d.nextRetryAt ?? t + 2500, t + 2500);
-      }
-    });
-  }
-  emit();
-}
-
-function replayDelivery(id: string): void {
-  const d = state.deliveries.find((x) => x.id === id);
-  if (!d) return;
-  d.status = 'pending';
-  d.nextRetryAt = null;
-  emit();
-  setTimeout(() => performAttempt(d), rint(450, 900));
-}
-
-// ---------- derived ----------
-function computeStats(): Stats {
-  const pending = state.deliveries.filter((d) => d.status === 'retrying' || d.status === 'pending').length;
-  const total = state.base.delivered + state.base.failedFinal;
-  const lat = state.latencies.slice().sort((a, b) => a - b);
-  const p95 = lat.length > 0 ? (lat[Math.min(lat.length - 1, Math.floor(lat.length * 0.95))] ?? 0) : 0;
-  return {
-    published: state.base.published,
-    successRate: total > 0 ? (state.base.delivered / total) * 100 : 100,
-    p95,
-    pendingRetries: pending,
-    chart: state.chart.slice(),
-  };
-}
-
 // ---------- hooks (única API que la UI puede usar) ----------
-/* El store es un objeto plano que muta y emite; el hook se suscribe vía
-   useSyncExternalStore a un contador de versión, así cada emit() fuerza
-   re-render y los componentes leen el estado fresco durante el render. */
-function useStoreVersion(): void {
-  useSyncExternalStore(subscribe, () => version);
-}
+const EMPTY_STATS: Stats = {
+  published: 0,
+  successRate: 100,
+  p95: 0,
+  pendingRetries: 0,
+  chart: new Array<number>(12).fill(0),
+};
+const EMPTY_ENDPOINTS: Endpoint[] = [];
+const EMPTY_DELIVERIES: Delivery[] = [];
+const EMPTY_ECHO: EchoEntry[] = [];
 
 export function useStats(): Stats {
-  useStoreVersion();
-  return computeStats();
+  const { data } = useQuery({
+    queryKey: ['stats'],
+    queryFn: async () => {
+      const body = await fetchJson<{ stats: Stats }>('/api/stats');
+      return body.stats;
+    },
+  });
+  return data ?? EMPTY_STATS;
 }
 
 export function useEndpoints(): Endpoint[] {
-  useStoreVersion();
-  return state.endpoints;
+  const { data } = useQuery({
+    queryKey: ['endpoints'],
+    queryFn: async () => {
+      const body = await fetchJson<{ endpoints: ApiEndpoint[] }>('/api/endpoints');
+      return body.endpoints.map(mapEndpoint);
+    },
+  });
+  return data ?? EMPTY_ENDPOINTS;
 }
 
 export function useDeliveries(): Delivery[] {
-  useStoreVersion();
-  return state.deliveries;
+  const { data } = useQuery({
+    queryKey: ['deliveries'],
+    queryFn: async () => {
+      const body = await fetchJson<{ deliveries: ApiDelivery[] }>('/api/deliveries');
+      return body.deliveries.map(mapDelivery);
+    },
+  });
+  return data ?? EMPTY_DELIVERIES;
 }
 
 export function useEcho(): EchoEntry[] {
-  useStoreVersion();
-  return state.echo;
+  const { data } = useQuery({
+    queryKey: ['echo'],
+    queryFn: async () => {
+      const body = await fetchJson<{ messages: ApiEchoMessage[] }>('/api/echo');
+      return body.messages.map(mapEcho);
+    },
+  });
+  return data ?? EMPTY_ECHO;
 }
 
 export function useFailureMode(): boolean {
-  useStoreVersion();
-  return state.failureMode;
+  return false; // el toggle de fallo se activa en la Fase 2
 }
 
 export function useDemoActions(): DemoActions {
-  return { sendTestEvent, setFailureMode, replayDelivery };
-}
+  const qc = useQueryClient();
 
-seed();
+  const refreshAll = (): void => {
+    void qc.invalidateQueries({ queryKey: ['deliveries'] });
+    void qc.invalidateQueries({ queryKey: ['stats'] });
+    void qc.invalidateQueries({ queryKey: ['echo'] });
+    void qc.invalidateQueries({ queryKey: ['endpoints'] });
+  };
+
+  return {
+    /* El id del evento se genera en el CLIENTE: es la clave de idempotencia
+       que el servidor respeta con el unique (session_id, id). Devuelve el id
+       de inmediato y refresca las queries cuando el POST (que ya hizo el
+       drain inline) responde. */
+    sendTestEvent: (eventType?: string): string => {
+      const type = eventType ?? EVENT_TYPES[0] ?? 'user.created';
+      const id = 'evt_' + crypto.randomUUID();
+      void fetchJson('/api/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, event_type: type, payload: makeSamplePayload(type) }),
+      })
+        .then(refreshAll)
+        .catch((err: unknown) => console.error('sendTestEvent failed:', err));
+      return id;
+    },
+    setFailureMode: () => undefined, // Fase 2
+    replayDelivery: () => undefined, // Fase 2
+  };
+}

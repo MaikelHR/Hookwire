@@ -45,13 +45,12 @@ export function DeliveryDrawer({ deliveryId, onClose }: { deliveryId: string; on
             </div>
           </div>
           <div className="flex gap-2">
-            <Button
-              size="small"
-              onClick={() => replayDelivery(d.id)}
-              disabled={d.status === 'pending' || d.status === 'retrying'}
-            >
-              ⟳ Replay delivery
-            </Button>
+            {/* El replay manual llega en la Fase 2: visible pero inerte */}
+            <span title="coming soon">
+              <Button size="small" onClick={() => replayDelivery(d.id)} disabled>
+                ⟳ Replay delivery
+              </Button>
+            </span>
             <IconButton onClick={onClose}>esc ✕</IconButton>
           </div>
         </div>

@@ -56,12 +56,14 @@ export function LiveDemoPanel() {
             {sending ? '⟳ sending…' : '▸ Send test event'}
           </Button>
         </div>
-        <div className="flex items-start gap-2.5">
+        {/* El toggle se habilita en la Fase 2: queda visible pero inerte */}
+        <div className="flex items-start gap-2.5" title="coming soon">
           <button
+            disabled
             onClick={() => setFailureMode(!failureMode)}
-            aria-label="Simulate endpoint failure"
+            aria-label="Simulate endpoint failure (coming soon)"
             className={
-              'w-[34px] h-[19px] flex-none rounded-full border relative p-0 transition-[background-color,border-color] duration-[180ms] ' +
+              'w-[34px] h-[19px] flex-none rounded-full border relative p-0 transition-[background-color,border-color] duration-[180ms] opacity-60 cursor-not-allowed ' +
               (failureMode ? 'bg-err/25 border-err' : 'bg-inset border-line-strong')
             }
           >
@@ -106,15 +108,14 @@ export function LiveDemoPanel() {
                   <span className="text-[10px] text-faint">{fmtClock(e.ts)}</span>
                 </div>
                 <div className="flex gap-1.5 mt-1.5 items-center">
-                  {e.verified ? (
-                    <span className="inline-flex items-center gap-[5px] text-[9.5px] tracking-[0.05em] px-[7px] py-[2px] rounded-full text-ok bg-ok/12">
-                      ✓ Signature verified
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-[5px] text-[9.5px] tracking-[0.05em] px-[7px] py-[2px] rounded-full text-err bg-err/12">
-                      ✕ responded 500
-                    </span>
-                  )}
+                  {/* La verificación real de firma llega en la Fase 3: el badge
+                      queda visible pero apagado */}
+                  <span
+                    title="coming soon"
+                    className="inline-flex items-center gap-[5px] text-[9.5px] tracking-[0.05em] px-[7px] py-[2px] rounded-full text-faint bg-hov cursor-default"
+                  >
+                    ✓ Signature verified
+                  </span>
                   {e.attempt > 1 ? (
                     <span className="inline-flex items-center gap-[5px] text-[9.5px] tracking-[0.05em] px-[7px] py-[2px] rounded-full text-faint bg-hov">
                       attempt #{e.attempt}
