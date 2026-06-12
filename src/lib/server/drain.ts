@@ -3,8 +3,8 @@
    solo las functions de /api; el cliente nunca lo toca).
 
    Función reutilizable a propósito: POST /api/events la ejecuta
-   inline tras publicar, y POST /api/tick (Fase 2) la reusará tal
-   cual para disparar reintentos vencidos.
+   inline tras publicar, POST /api/tick la dispara por polling para
+   los reintentos vencidos y POST /api/replay tras re-encolar.
 
    Patrón de claim: SELECT ... FOR NO KEY UPDATE SKIP LOCKED dentro
    de una transacción. El lock de fila funciona como "lease":
@@ -24,6 +24,7 @@
    ============================================================ */
 import { createHmac } from 'node:crypto';
 import type { Pool, PoolClient } from '@neondatabase/serverless';
+import { resolveAttemptOutcome, type AttemptOutcome } from '../retry-policy.js';
 
 const USER_AGENT = 'Hookwire/1.4 (+https://hookwire.dev)';
 const HTTP_TIMEOUT_MS = 5000;
@@ -52,6 +53,7 @@ export interface DrainResult {
   processed: number;
   delivered: number;
   retrying: number;
+  deadLettered: number;
 }
 
 /* Firma estilo Stripe: HMAC SHA-256 de "<timestamp>.<body>" con el secreto
@@ -63,9 +65,13 @@ export function signPayload(secret: string, body: string, unixSeconds: number): 
   return `t=${unixSeconds},v1=${mac}`;
 }
 
-/* Fase 1: el claim solo toma deliveries 'pending' (los retries con backoff
-   llegan en la Fase 2). El JOIN trae todo lo necesario para el intento;
-   OF d bloquea únicamente la fila de deliveries. */
+/* El claim toma trabajo "vencido": las 'pending' recién encoladas llevan
+   next_attempt_at NULL (elegibles ya) y las 'retrying' llevan el timestamp
+   que el backoff les programó. La comparación usa el now() de Postgres, el
+   mismo reloj que escribió next_attempt_at al fallar: una sola fuente de
+   tiempo, sin depender del reloj de cada function. El JOIN trae todo lo
+   necesario para el intento; OF d bloquea únicamente la fila de deliveries
+   (lo cubre el índice parcial idx_deliveries_due). */
 const CLAIM_SQL = `
   SELECT d.id, d.session_id, d.attempt_count,
          e.url, e.secret,
@@ -73,13 +79,14 @@ const CLAIM_SQL = `
   FROM deliveries d
   JOIN endpoints e ON e.id = d.endpoint_id
   JOIN events ev ON ev.session_id = d.session_id AND ev.id = d.event_id
-  WHERE d.status = 'pending'
+  WHERE d.status IN ('pending', 'retrying')
+    AND (d.next_attempt_at IS NULL OR d.next_attempt_at <= now())
     AND ($1::text IS NULL OR d.session_id = $1)
   ORDER BY d.created_at
   FOR NO KEY UPDATE OF d SKIP LOCKED
   LIMIT 1`;
 
-async function attemptDelivery(client: PoolClient, row: ClaimedRow): Promise<'delivered' | 'retrying'> {
+async function attemptDelivery(client: PoolClient, row: ClaimedRow): Promise<AttemptOutcome['status']> {
   const attemptNumber = row.attempt_count + 1;
   const body = JSON.stringify(row.payload);
   const signature = signPayload(row.secret, body, Math.floor(Date.now() / 1000));
@@ -109,27 +116,33 @@ async function attemptDelivery(client: PoolClient, row: ClaimedRow): Promise<'de
   }
   const durationMs = Date.now() - started;
 
-  const ok = responseStatus !== null && responseStatus >= 200 && responseStatus < 300;
-  const status = ok ? 'delivered' : 'retrying';
+  /* La política pura decide: 2xx entrega, fallo programa el siguiente
+     reintento del schedule, y el sexto fallo manda a dead letter. */
+  const outcome = resolveAttemptOutcome(responseStatus, attemptNumber);
 
   await client.query(
     `INSERT INTO delivery_attempts (delivery_id, attempt_number, response_status, response_body_snippet, duration_ms, error)
      VALUES ($1, $2, $3, $4, $5, $6)`,
     [row.id, attemptNumber, responseStatus, snippet, durationMs, errorText],
   );
-  /* next_attempt_at queda NULL adrede: en Fase 1 no se reintenta; la Fase 2
-     calculará aquí el backoff (10s/30s/90s/5m/5m) y el dead-letter. */
+  /* next_attempt_at se calcula con el now() de Postgres (el mismo reloj
+     que luego compara el claim) y queda NULL en los estados terminales,
+     sacando la fila del índice parcial de la cola. */
   await client.query(
-    `UPDATE deliveries SET status = $2, attempt_count = $3, signature = $4, updated_at = now() WHERE id = $1`,
-    [row.id, status, attemptNumber, signature],
+    `UPDATE deliveries
+     SET status = $2, attempt_count = $3, signature = $4,
+         next_attempt_at = CASE WHEN $5::int IS NOT NULL THEN now() + make_interval(secs => $5::int) END,
+         updated_at = now()
+     WHERE id = $1`,
+    [row.id, outcome.status, attemptNumber, signature, outcome.status === 'retrying' ? outcome.retryDelayS : null],
   );
-  return status;
+  return outcome.status;
 }
 
 export async function drainPendingDeliveries(pool: Pool, options: DrainOptions = {}): Promise<DrainResult> {
   const sessionId: string | null = options.sessionId ?? null;
   const maxDeliveries = options.maxDeliveries ?? 25;
-  const result: DrainResult = { processed: 0, delivered: 0, retrying: 0 };
+  const result: DrainResult = { processed: 0, delivered: 0, retrying: 0, deadLettered: 0 };
 
   const client = await pool.connect();
   try {
@@ -145,7 +158,9 @@ export async function drainPendingDeliveries(pool: Pool, options: DrainOptions =
         const status = await attemptDelivery(client, row);
         await client.query('COMMIT');
         result.processed++;
-        result[status]++;
+        if (status === 'delivered') result.delivered++;
+        else if (status === 'retrying') result.retrying++;
+        else result.deadLettered++;
       } catch (err) {
         await client.query('ROLLBACK');
         throw err;
