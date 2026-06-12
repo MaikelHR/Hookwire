@@ -31,10 +31,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       `SELECT d.id, d.event_id, d.endpoint_id, d.status, d.next_attempt_at, d.signature, d.created_at,
               ev.event_type, ev.payload,
               CASE WHEN d.status = 'delivered' THEN (
-                SELECT EXTRACT(EPOCH FROM (max(a2.created_at) - d.created_at)) * 1000
+                SELECT (EXTRACT(EPOCH FROM (a2.created_at - d.created_at)) * 1000 + a2.duration_ms)::float8
                 FROM delivery_attempts a2
                 WHERE a2.delivery_id = d.id AND a2.response_status BETWEEN 200 AND 299
-              )::float8 END AS latency_ms,
+                ORDER BY a2.attempt_number DESC
+                LIMIT 1
+              ) END AS latency_ms,
               COALESCE(att.attempts, '[]'::json) AS attempts
        FROM deliveries d
        JOIN events ev ON ev.session_id = d.session_id AND ev.id = d.event_id
