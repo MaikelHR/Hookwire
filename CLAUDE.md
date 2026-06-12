@@ -118,10 +118,22 @@ Migraciones SQL versionadas en `/migrations`, aplicadas con `npm run db:migrate`
   evento, un solo set de deliveries). Tests puros de la firma: secreto alterado,
   body manipulado, JSON equivalente con bytes distintos, timestamp fuera de
   ventana y header malformado, todos verified=false.
-- **Fase 4: Multi-visitante y pulido**
-  Sesión anónima por cookie (sustituir la sesión fija 'demo' en `api/_lib/session.ts`),
-  aislamiento por visitante, expiración a 24h, rate limit por IP, cleanup job,
-  README público con diagrama de arquitectura.
+- **Fase 4: Multi-visitante y pulido (COMPLETADA, proyecto v1 completo)**
+  `getSessionId` crea una cookie httpOnly + SameSite=Lax + Secure con UUID en la
+  primera petición (Max-Age 24h SIN renovar: muere junto con los datos); como todo
+  el código ya recibía session_id, el cambio quedó contenido en `api/_lib/session.ts`.
+  Cada sesión recibe su Demo receiver con secreto propio (el seed on-demand ya era
+  idempotente). Expiración: `api/_lib/cleanup.ts` corre al inicio de cada
+  `POST /api/tick` (DELETE por created_at a 24h, cascada de FKs, sin cron externo).
+  Rate limit por IP con ventana deslizante sobre Postgres (`api/_lib/rate-limit.ts`,
+  una sola query con CTE que cuenta la ventana e inserta el hit solo si hay cupo):
+  30 eventos/5min en `/api/events`, 60/5min en `/api/replay`, 429 con Retry-After
+  en header y body; la UI lo muestra como toast (`src/lib/toasts.ts`, el data
+  service captura el ApiError 429). `useFirstLoad` (queries reales compartiendo
+  queryKey) reemplazó al useFakeLoad del mock, eliminado. k6 en `/load-test`
+  (smoke 10 VUs p95 217ms; delivery-flow p95 339ms con drain inline; burst que
+  demuestra el 429 exacto a los 30 de la ventana), resultados commiteados.
+  README público en inglés con Mermaid, design decisions y tabla k6.
 
 ## Reglas de trabajo
 
