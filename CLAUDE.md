@@ -15,20 +15,23 @@ simula un fallo y observa los reintentos, todo en menos de un minuto y sin confi
   `tweaks-panel.jsx` NO se porta.
 - **Capa de datos del frontend:** TODA la data pasa por `src/lib/data-service.ts` y sus
   hooks tipados (`useStats`, `useEndpoints`, `useDeliveries`, `useEcho`, `useFailureMode`,
-  `useDemoActions`). La UI nunca toca el transporte directamente. Desde la Fase 1
-  consume la API real con TanStack Query (polling `refetchInterval` 4 s); el cambio
-  de mock a API real no tocó ningún componente, como estaba previsto.
+  `useTick`, `useDemoActions`). La UI nunca toca el transporte directamente. Desde la
+  Fase 1 consume la API real con TanStack Query (polling `refetchInterval` 4 s); el
+  cambio de mock a API real no tocó ningún componente, como estaba previsto.
 - **Backend:** Vercel Functions (Node + TypeScript) en `/api`. NO hay worker 24/7.
 - **Base de datos:** Neon Postgres (free tier). Patrón de cola sobre Postgres con
   `SELECT ... FOR NO KEY UPDATE SKIP LOCKED` (NO KEY UPDATE y no FOR UPDATE: las FKs
   que referencian deliveries toman FOR KEY SHARE al insertar, y FOR UPDATE las
   bloquearía generando interbloqueo con el propio echo receiver durante el drain).
 - **Procesamiento:** al publicar un evento, la misma request ejecuta un "drain" inline.
-  Además existirá `POST /api/tick` (Fase 2) que el dashboard llama por polling cada 3-5 s
-  mientras está abierto, para disparar reintentos vencidos. El polling es una decisión
-  deliberada (no websockets).
+  Además `POST /api/tick` dispara los reintentos vencidos: `useTick` lo llama cada 4 s
+  mientras la pestaña está visible (visibilitychange pausa el interval) y solo si el
+  cache muestra deliveries pending o retrying, para no quemar invocaciones del free
+  tier. El polling es una decisión deliberada (no websockets).
 - **Reintentos:** backoff `10s, 30s, 90s, 5m, 5m`; máximo **6 intentos** y la delivery
-  pasa a dead-letter.
+  pasa a dead-letter. La política vive en `src/lib/retry-policy.ts` (módulo puro
+  compartido por el drain del server y la UI: `BACKOFF_SCHEDULE_S`, `MAX_ATTEMPTS`,
+  `resolveAttemptOutcome`); el README la citará como contrato de la cola.
 - **Firma:** header `X-Hookwire-Signature` con HMAC SHA-256 (secreto por endpoint),
   formato `t=<unix>,v1=<hex64>`.
 - **Idempotencia:** `event_id` generado por el cliente + unique constraint
@@ -80,11 +83,22 @@ Migraciones SQL versionadas en `/migrations`, aplicadas con `npm run db:migrate`
   echo_messages), APIs de lectura (`/api/endpoints`, `/api/deliveries`, `/api/stats`)
   y frontend consumiendo la API real vía TanStack Query. Sesión fija 'demo'
   parametrizada; sin reintentos aún (next_attempt_at queda NULL).
-- **Fase 2: Cola y reintentos**
-  `POST /api/tick` (polling del dashboard cada 3-5 s) que reusa el drain para tomar
-  deliveries vencidas, aplica backoff (10s/30s/90s/5m/5m) y dead-letter a los 6
-  intentos; replay manual; toggle "Simulate endpoint failure" funcional
-  (simulate_failure hace que el echo responda 500).
+- **Fase 2: Cola y reintentos (COMPLETADA)**
+  La política de reintentos es `src/lib/retry-policy.ts` y el drain la aplica: el claim
+  toma pending y retrying vencidas comparando `next_attempt_at` con el `now()` de
+  Postgres (la misma fuente de tiempo que lo escribió al fallar) y cada fallo programa
+  el siguiente paso del schedule o el dead-letter al sexto intento. `POST /api/tick`
+  reusa el drain (seguro entre pestañas por SKIP LOCKED, demostrado en
+  `src/lib/server/drain.integration.test.ts`); `POST /api/replay` re-encola una
+  delivery terminada sin resetear `attempt_count` (el historial es real y los intentos
+  posteriores al dead-letter que fallan vuelven directo a dead-letter). El toggle
+  "Simulate endpoint failure" persiste vía PATCH `/api/endpoints` con `z.guid()`, no
+  `z.uuid()` (el id del endpoint demo es un SHA-256 truncado sin nibbles RFC 4122), y
+  `/api/echo` responde 500 real con el toggle activo, sin registrar echo_message. UI:
+  countdown en vivo, contador de intentos, timeline con backoff y pill Dead-lettered
+  (componentes del handoff que ya existían, ahora con datos reales). Tests Vitest:
+  política pura sin red ni DB, e integración contra Neon (concurrencia, backoff
+  persistido, dead-letter terminal).
 - **Fase 3: Verificación de firma**
   El echo receiver verifica la firma HMAC con el secreto del endpoint y el badge
   "Signature verified" pasa a ser real (hoy está deshabilitado con "coming soon").
@@ -109,4 +123,6 @@ Migraciones SQL versionadas en `/migrations`, aplicadas con `npm run db:migrate`
   producción; para correr las functions en local usar `vercel dev`)
 - `npm run build`: typecheck (`tsc --noEmit`) + build de producción
 - `npm run lint`: ESLint
+- `npm test`: Vitest; los tests de integración del drain leen `DATABASE_URL` de `.env`
+  (sin él se saltan y solo corren los puros)
 - `npm run db:migrate`: aplica las migraciones pendientes (lee `DATABASE_URL` de `.env`)
