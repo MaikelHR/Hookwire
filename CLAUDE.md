@@ -15,11 +15,14 @@ simula un fallo y observa los reintentos, todo en menos de un minuto y sin confi
   `tweaks-panel.jsx` NO se porta.
 - **Capa de datos del frontend:** TODA la data pasa por `src/lib/data-service.ts` y sus
   hooks tipados (`useStats`, `useEndpoints`, `useDeliveries`, `useEcho`, `useFailureMode`,
-  `useDemoActions`). La UI nunca toca el store directamente. En Fase 0 es un mock con
-  simulación; en fases siguientes se conecta a la API real **sin tocar componentes**.
+  `useDemoActions`). La UI nunca toca el transporte directamente. Desde la Fase 1
+  consume la API real con TanStack Query (polling `refetchInterval` 4 s); el cambio
+  de mock a API real no tocó ningún componente, como estaba previsto.
 - **Backend:** Vercel Functions (Node + TypeScript) en `/api`. NO hay worker 24/7.
 - **Base de datos:** Neon Postgres (free tier). Patrón de cola sobre Postgres con
-  `SELECT ... FOR UPDATE SKIP LOCKED`.
+  `SELECT ... FOR NO KEY UPDATE SKIP LOCKED` (NO KEY UPDATE y no FOR UPDATE: las FKs
+  que referencian deliveries toman FOR KEY SHARE al insertar, y FOR UPDATE las
+  bloquearía generando interbloqueo con el propio echo receiver durante el drain).
 - **Procesamiento:** al publicar un evento, la misma request ejecuta un "drain" inline.
   Además existirá `POST /api/tick` (Fase 2) que el dashboard llama por polling cada 3-5 s
   mientras está abierto, para disparar reintentos vencidos. El polling es una decisión
@@ -69,21 +72,26 @@ Migraciones SQL versionadas en `/migrations`, aplicadas con `npm run db:migrate`
   Vite + React + TS estricto + Tailwind + ESLint; UI pixel-perfect recreada del handoff
   con data-service mock; `/api/health` con `SELECT 1` contra Neon; migración inicial
   (4 tablas); CLAUDE.md; deploy a Vercel (hookwire.vercel.app).
-- **Fase 1: API real de lectura/escritura**
-  Sesión anónima por cookie; CRUD de endpoints; `POST /api/events` con idempotencia y
-  rate limit por IP; creación de deliveries; drain inline en la misma request (firma
-  HMAC, intento HTTP, registro de attempts).
+- **Fase 1: Núcleo de entrega end-to-end (COMPLETADA)**
+  Existe el camino feliz completo en producción: `POST /api/events` (zod, idempotencia
+  por id de cliente, deliveries por endpoint activo) con drain inline reutilizable
+  (`src/lib/server/drain.ts`: claim FOR NO KEY UPDATE SKIP LOCKED, firma HMAC, timeout
+  5 s, registro en delivery_attempts), echo receiver real (`/api/echo` + tabla
+  echo_messages), APIs de lectura (`/api/endpoints`, `/api/deliveries`, `/api/stats`)
+  y frontend consumiendo la API real vía TanStack Query. Sesión fija 'demo'
+  parametrizada; sin reintentos aún (next_attempt_at queda NULL).
 - **Fase 2: Cola y reintentos**
-  `POST /api/tick` (polling del dashboard cada 3-5 s) que toma deliveries vencidas con
-  `FOR UPDATE SKIP LOCKED`, ejecuta intentos, aplica backoff y dead-letter a los 6
-  intentos; replay manual.
-- **Fase 3: Conectar el frontend a la API real**
-  Sustituir el mock de `src/lib/data-service.ts` por fetch a `/api/*` manteniendo los
-  hooks idénticos (cero cambios en componentes); echo receiver real; expiración de
-  sesión a 24h.
-- **Fase 4: Pulido y portfolio**
-  Rate limiting fino, cleanup job de sesiones, README público con diagrama de
-  arquitectura, link real de GitHub en el modal de bienvenida, métricas P95 reales.
+  `POST /api/tick` (polling del dashboard cada 3-5 s) que reusa el drain para tomar
+  deliveries vencidas, aplica backoff (10s/30s/90s/5m/5m) y dead-letter a los 6
+  intentos; replay manual; toggle "Simulate endpoint failure" funcional
+  (simulate_failure hace que el echo responda 500).
+- **Fase 3: Verificación de firma**
+  El echo receiver verifica la firma HMAC con el secreto del endpoint y el badge
+  "Signature verified" pasa a ser real (hoy está deshabilitado con "coming soon").
+- **Fase 4: Multi-visitante y pulido**
+  Sesión anónima por cookie (sustituir la sesión fija 'demo' en `api/_lib/session.ts`),
+  aislamiento por visitante, expiración a 24h, rate limit por IP, cleanup job,
+  README público con diagrama de arquitectura.
 
 ## Reglas de trabajo
 
@@ -97,7 +105,8 @@ Migraciones SQL versionadas en `/migrations`, aplicadas con `npm run db:migrate`
 
 ## Comandos
 
-- `npm run dev`: dev server de Vite (solo UI; las functions corren con `vercel dev`)
+- `npm run dev`: dev server de Vite (la UI local proxea `/api` al deploy de
+  producción; para correr las functions en local usar `vercel dev`)
 - `npm run build`: typecheck (`tsc --noEmit`) + build de producción
 - `npm run lint`: ESLint
 - `npm run db:migrate`: aplica las migraciones pendientes (lee `DATABASE_URL` de `.env`)
