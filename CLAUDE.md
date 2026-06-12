@@ -33,7 +33,10 @@ simula un fallo y observa los reintentos, todo en menos de un minuto y sin confi
   compartido por el drain del server y la UI: `BACKOFF_SCHEDULE_S`, `MAX_ATTEMPTS`,
   `resolveAttemptOutcome`); el README la citará como contrato de la cola.
 - **Firma:** header `X-Hookwire-Signature` con HMAC SHA-256 (secreto por endpoint),
-  formato `t=<unix>,v1=<hex64>`.
+  formato `t=<unix>,v1=<hex64>` donde v1 firma `"<t>.<raw_body>"`. Firma y
+  verificación viven en `src/lib/server/signature.ts` (módulo puro:
+  `signPayload`, `verifySignature` con `crypto.timingSafeEqual` y tolerancia
+  de 5 min en el timestamp).
 - **Idempotencia:** `event_id` generado por el cliente + unique constraint
   `(session_id, id)` en `events`.
 - **Demo multi-visitante:** sesión anónima por cookie, datos aislados por `session_id`,
@@ -99,9 +102,22 @@ Migraciones SQL versionadas en `/migrations`, aplicadas con `npm run db:migrate`
   (componentes del handoff que ya existían, ahora con datos reales). Tests Vitest:
   política pura sin red ni DB, e integración contra Neon (concurrencia, backoff
   persistido, dead-letter terminal).
-- **Fase 3: Verificación de firma**
-  El echo receiver verifica la firma HMAC con el secreto del endpoint y el badge
-  "Signature verified" pasa a ser real (hoy está deshabilitado con "coming soon").
+- **Fase 3: Verificación de firma (COMPLETADA)**
+  La firma se extrajo de drain.ts al módulo puro `src/lib/server/signature.ts` y el
+  echo receiver la verifica de verdad: relee el body CRUDO del stream del request
+  (los helpers de `@vercel/node` lo restauran tras construir `req.body`; verificar
+  una re-serialización rompería firmas legítimas porque JSON no es canónico),
+  recalcula el HMAC con su copia del secreto, compara con `crypto.timingSafeEqual`
+  (sin oráculo de timing) y exige `|now - t| <= 5 min` (anti-replay). El veredicto
+  persiste en `echo_messages.verified` (migración 003, `DEFAULT FALSE` fail-closed)
+  y el badge "Signature verified" del echo console es real (verde/rojo). Una firma
+  inválida se registra con verified=false en vez de rechazarse: decisión de demo
+  para que el badge rojo cuente la historia. La publicación se extrajo a
+  `src/lib/server/publish.ts` y un test de integración prueba la idempotencia
+  concurrente (mismo event_id dos veces en Promise.all con dos pools: un solo
+  evento, un solo set de deliveries). Tests puros de la firma: secreto alterado,
+  body manipulado, JSON equivalente con bytes distintos, timestamp fuera de
+  ventana y header malformado, todos verified=false.
 - **Fase 4: Multi-visitante y pulido**
   Sesión anónima por cookie (sustituir la sesión fija 'demo' en `api/_lib/session.ts`),
   aislamiento por visitante, expiración a 24h, rate limit por IP, cleanup job,
