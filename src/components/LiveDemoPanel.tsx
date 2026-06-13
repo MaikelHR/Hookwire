@@ -79,7 +79,7 @@ export function LiveDemoPanel() {
           <div>
             <div className="text-xs font-medium">Simulate endpoint failure</div>
             <div className="font-mono text-[10.5px] text-faint">
-              (receiver returns 500 — deliveries enter retry backoff)
+              (receiver returns 500, deliveries enter retry backoff)
             </div>
           </div>
         </div>

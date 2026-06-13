@@ -74,7 +74,7 @@ export function OverviewView({ onOpenDelivery }: { onOpenDelivery: (id: string) 
               <SkeletonRows cols={4} rows={6} />
             </table>
           ) : recent.length === 0 ? (
-            <EmptyState>no deliveries yet — send a test event →</EmptyState>
+            <EmptyState>no deliveries yet, send a test event →</EmptyState>
           ) : (
             <div>
               {recent.map((d) => {

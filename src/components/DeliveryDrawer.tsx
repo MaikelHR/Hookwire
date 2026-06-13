@@ -141,7 +141,7 @@ export function DeliveryDrawer({ deliveryId, onClose }: { deliveryId: string; on
                       <span className="text-err">moved to dead letter queue</span>
                     </div>
                     <div className="font-mono text-[10.5px] text-dim mt-[3px]">
-                      max attempts ({d.maxAttempts}) exhausted — replay manually when the endpoint recovers
+                      max attempts ({d.maxAttempts}) exhausted; replay manually when the endpoint recovers
                     </div>
                   </div>
                 </div>
